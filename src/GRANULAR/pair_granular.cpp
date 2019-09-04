@@ -389,7 +389,7 @@ void PairGranular::compute(int eflag, int vflag)
           F_pulloff = 4*MY_PI*coh*Reff;
           Fncrit = fabs(Fne + 2*F_pulloff);
         } else {
-          Fncrit = fabs(Fntot);
+          Fncrit = fabs(Fne);// MODIFICATION by JBC for the MEL @ NU LAMMPS modifications. Critical limit force based on elastic normal force only, no account of damping
         }
 		Fscrit = tangential_coeffs[itype][jtype][2] * Fncrit;
 
@@ -1507,7 +1507,7 @@ double PairGranular::single(int i, int j, int itype, int jtype,
     F_pulloff = 4*MY_PI*coh*Reff;
     Fncrit = fabs(Fne + 2*F_pulloff);
   } else {
-    Fncrit = fabs(Fntot);
+    Fncrit = fabs(Fne);// MODIFICATION by JBC for the MEL @ NU LAMMPS modifications. Critical limit force based on elastic normal force only, no account of damping
   }
   Fscrit = tangential_coeffs[itype][jtype][2] * Fncrit;
 
