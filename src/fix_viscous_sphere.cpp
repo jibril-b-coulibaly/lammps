@@ -14,10 +14,8 @@
    written by Jibril B. Coulibaly @ Northwestern University, 04/12/2019
 ------------------------------------------------------------------------- */
 
-#include <cmath>
-#include <cstdlib>
-#include <cstring>
 #include "fix_viscous_sphere.h"
+#include <cstring>
 #include "atom.h"
 #include "update.h"
 #include "respa.h"
@@ -38,7 +36,7 @@ FixViscousSphere::FixViscousSphere(LAMMPS *lmp, int narg, char **arg) :
   if (!atom->sphere_flag)
 	error->all(FLERR,"Fix viscous/sphere requires atom style sphere");
 
-  if (narg < 4) error->all(FLERR,"Illegal fix viscous command");
+  if (narg < 4) error->all(FLERR,"Illegal fix viscous/sphere command");
 
   double gamma_one = force->numeric(FLERR,arg[3]);
   gamma = new double[atom->ntypes+1];

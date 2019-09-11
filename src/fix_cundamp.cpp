@@ -12,12 +12,11 @@
    
    Damping used in Yade-DEM, reduction of unbalanced force
    written by Jibril B. Coulibaly @ Northwestern University, 04/12/2019
+   Adapted for rigid bodies: damping applied to the rigid body, not individual particles
 ------------------------------------------------------------------------- */
 
-#include <cmath>
-#include <cstdlib>
+#include "fix_cundamp.h"
 #include <cstring>
-#include "fix_damp_sphere.h"
 #include "atom.h"
 #include "update.h"
 #include "respa.h"
@@ -29,34 +28,40 @@ using namespace FixConst;
 
 /* ---------------------------------------------------------------------- */
 
-FixDampSphere::FixDampSphere(LAMMPS *lmp, int narg, char **arg) :
+FixCundamp::FixCundamp(LAMMPS *lmp, int narg, char **arg) :
   Fix(lmp, narg, arg),
-  gamma(NULL)
+  gamma_linear(NULL),gamma_angular(NULL)
 {
   dynamic_group_allow = 1;
   
   if (!atom->sphere_flag)
-	error->all(FLERR,"Fix damp/sphere requires atom style sphere");
+	error->all(FLERR,"Fix cundamp requires atom style sphere");
 
-  if (narg < 4) error->all(FLERR,"Illegal fix damp/sphere command");
-
-  double gamma_one = force->numeric(FLERR,arg[3]);
-  gamma = new double[atom->ntypes+1];
-  for (int i = 1; i <= atom->ntypes; i++) gamma[i] = gamma_one;
+  if (narg < 5) error->all(FLERR,"Illegal fix cundamp command");
+	
+	double gamma_linear_one = force->numeric(FLERR,arg[3]);
+	double gamma_angular_one = force->numeric(FLERR,arg[4]);
+  gamma_linear = new double[atom->ntypes+1];
+	gamma_angular = new double[atom->ntypes+1];
+  for (int i = 1; i <= atom->ntypes; i++) {
+		gamma_linear[i] = gamma_linear_one;
+		gamma_angular[i] = gamma_angular_one;
+	}
 
   // optional args
 
-  int iarg = 4;
+  int iarg = 5;
   while (iarg < narg) {
     if (strcmp(arg[iarg],"scale") == 0) {
-      if (iarg+3 > narg) error->all(FLERR,"Illegal fix damp/sphere command");
+      if (iarg+3 > narg) error->all(FLERR,"Illegal fix cundamp command");
       int itype = force->inumeric(FLERR,arg[iarg+1]);
       double scale = force->numeric(FLERR,arg[iarg+2]);
       if (itype <= 0 || itype > atom->ntypes)
-        error->all(FLERR,"Illegal fix damp/sphere command");
-      gamma[itype] = gamma_one * scale;
+        error->all(FLERR,"Illegal fix cundamp command");
+      gamma_linear[itype] = gamma_linear_one * scale;
+			gamma_angular[itype] = gamma_angular_one * scale;
       iarg += 3;
-    } else error->all(FLERR,"Illegal fix damp/sphere command");
+    } else error->all(FLERR,"Illegal fix cundamp command");
   }
 
   respa_level_support = 1;
@@ -65,14 +70,15 @@ FixDampSphere::FixDampSphere(LAMMPS *lmp, int narg, char **arg) :
 
 /* ---------------------------------------------------------------------- */
 
-FixDampSphere::~FixDampSphere()
+FixCundamp::~FixCundamp()
 {
-  delete [] gamma;
+  delete [] gamma_linear;
+	delete [] gamma_angular;
 }
 
 /* ---------------------------------------------------------------------- */
 
-int FixDampSphere::setmask()
+int FixCundamp::setmask()
 {
   int mask = 0;
   mask |= POST_FORCE;
@@ -83,7 +89,7 @@ int FixDampSphere::setmask()
 
 /* ---------------------------------------------------------------------- */
 
-void FixDampSphere::init()
+void FixCundamp::init()
 {
   int max_respa = 0;
 
@@ -95,7 +101,7 @@ void FixDampSphere::init()
 
 /* ---------------------------------------------------------------------- */
 
-void FixDampSphere::setup(int vflag)
+void FixCundamp::setup(int vflag)
 {
   if (strstr(update->integrate_style,"verlet"))
     post_force(vflag);
@@ -108,63 +114,63 @@ void FixDampSphere::setup(int vflag)
 
 /* ---------------------------------------------------------------------- */
 
-void FixDampSphere::min_setup(int vflag)
+void FixCundamp::min_setup(int vflag)
 {
   post_force(vflag);
 }
 
 /* ---------------------------------------------------------------------- */
 
-void FixDampSphere::post_force(int /*vflag*/)
+void FixCundamp::post_force(int /*vflag*/)
 {
-  // apply force and torque reduction to finite-size atoms in group
-  // force is reduced if its work is positive
-  // applied over each direction -> NON-OBJECTIVE, ARTIFICAL
-  // magnitude depends on atom type
-
-
+  // apply force reduction/increase to granular particles. Force is reduced/increased if its power is positive/negative
+  // apply torque reduction/increase to granular partiicles. Torque is reduced/increased if its power is positive/negative
+  // applied over each direction independently -> artificial, non-objective, frame-dependent damping method
+  
+  
   double **v = atom->v;
-  double **omega = atom->omega;
-  double **f = atom->f;
-  double **torque = atom->torque;
-  int *mask = atom->mask;
-  int *type = atom->type;
+	double **omega = atom->omega;
+	double **f = atom->f;
+	double **torque = atom->torque;
+	int *mask = atom->mask;
+	int *type = atom->type;
   int nlocal = atom->nlocal;
-
-  double drag;
-
-  for (int i = 0; i < nlocal; i++)
-    if (mask[i] & groupbit) {
-      drag = gamma[type[i]];
-	  int sgnf0(1),sgnf1(1),sgnf2(1),sgntq0(1),sgntq1(1),sgntq2(1);
-	  if(std::signbit(f[i][0]*v[i][0])) sgnf0 = -1;
-	  if(std::signbit(f[i][1]*v[i][1])) sgnf1 = -1;
-	  if(std::signbit(f[i][2]*v[i][2])) sgnf2 = -1;
-	  
-	  if(std::signbit(torque[i][0]*omega[i][0])) sgntq0 = -1;
-	  if(std::signbit(torque[i][1]*omega[i][1])) sgntq1 = -1;
-	  if(std::signbit(torque[i][2]*omega[i][2])) sgntq2 = -1;
-		  
-	  f[i][0] *= 1.0-drag*sgnf0;
-	  f[i][1] *= 1.0-drag*sgnf1;
-	  f[i][2] *= 1.0-drag*sgnf2;
-	  
-      torque[i][0] *= 1.0-drag*sgntq0;
-      torque[i][1] *= 1.0-drag*sgntq1;
-	  torque[i][2] *= 1.0-drag*sgntq2;
+	
+	double gamma_l,gamma_a;
+	int sgnf0,sgnf1,sgnf2;
+	int sgntq0,sgntq1,sgntq2;
+	
+	for (int i = 0; i < nlocal; i++)
+	  if (mask[i] & groupbit) {
+			gamma_l = gamma_linear[type[i]];
+			gamma_a = gamma_angular[type[i]];
+			
+			sgnf0 = (f[i][0]*v[i][0] > 0) - (f[i][0]*v[i][0] < 0);
+			sgnf1 = (f[i][1]*v[i][1] > 0) - (f[i][1]*v[i][1] < 0);
+			sgnf2 = (f[i][2]*v[i][2] > 0) - (f[i][2]*v[i][2] < 0);
+			f[i][0] *= 1.0-gamma_l*sgnf0;
+			f[i][1] *= 1.0-gamma_l*sgnf1;
+			f[i][2] *= 1.0-gamma_l*sgnf2;
+			
+			sgntq0 = (torque[i][0]*omega[i][0] > 0) - (torque[i][0]*omega[i][0] < 0);
+			sgntq1 = (torque[i][1]*omega[i][1] > 0) - (torque[i][1]*omega[i][1] < 0);
+			sgntq2 = (torque[i][2]*omega[i][2] > 0) - (torque[i][2]*omega[i][2] < 0);
+			torque[i][0] *= 1.0-gamma_a*sgntq0;
+			torque[i][1] *= 1.0-gamma_a*sgntq1;
+			torque[i][2] *= 1.0-gamma_a*sgntq2;
     }
 }
 
 /* ---------------------------------------------------------------------- */
 
-void FixDampSphere::post_force_respa(int vflag, int ilevel, int /*iloop*/)
+void FixCundamp::post_force_respa(int vflag, int ilevel, int /*iloop*/)
 {
   if (ilevel == ilevel_respa) post_force(vflag);
 }
 
 /* ---------------------------------------------------------------------- */
 
-void FixDampSphere::min_post_force(int vflag)
+void FixCundamp::min_post_force(int vflag)
 {
   post_force(vflag);
 }

@@ -12,25 +12,26 @@
    
    Damping used in Yade-DEM, reduction of unbalanced force
    written by Jibril B. Coulibaly @ Northwestern University, 04/12/2019
+   Adapted for rigid bodies: damping applied to the rigid body, not individual particles
 ------------------------------------------------------------------------- */
 
 #ifdef FIX_CLASS
 
-FixStyle(damp/sphere,FixDampSphere)
+FixStyle(cundamp/rigid,FixCundampRigid)
 
 #else
 
-#ifndef LMP_FIX_DAMP_SPHERE_H
-#define LMP_FIX_DAMP_SPHERE_H
+#ifndef LMP_FIX_CUNDAMP_RIGID_H
+#define LMP_FIX_CUNDAMP_RIGID_H
 
 #include "fix.h"
 
 namespace LAMMPS_NS {
 
-class FixDampSphere : public Fix {
+class FixCundampRigid : public Fix {
  public:
-  FixDampSphere(class LAMMPS *, int, char **);
-  virtual ~FixDampSphere();
+  FixCundampRigid(class LAMMPS *, int, char **);
+  virtual ~FixCundampRigid();
   int setmask();
   void init();
   void setup(int);
@@ -40,8 +41,10 @@ class FixDampSphere : public Fix {
   void min_post_force(int);
 
  protected:
-  double *gamma;
+  double gamma_linear,gamma_angular;
   int ilevel_respa;
+  char *idrigid;
+  class FixRigidSmall *fixrigid;
 };
 
 }

@@ -26,6 +26,8 @@ namespace LAMMPS_NS {
 
 class FixRigidSmall : public Fix {
   friend class ComputeRigidLocal;
+	friend class FixViscousRigid;
+	friend class FixCundampRigid;
 
  public:
   FixRigidSmall(class LAMMPS *, int, char **);

@@ -10,27 +10,28 @@
 
    See the README file in the top-level LAMMPS directory.
    
-   Damping used in Yade-DEM, reduction of unbalanced force, only on forces, no torque
+   Damping used in Yade-DEM, reduction of unbalanced force
    written by Jibril B. Coulibaly @ Northwestern University, 04/12/2019
+   Adapted for rigid bodies: damping applied to the rigid body, not individual particles
 ------------------------------------------------------------------------- */
 
 #ifdef FIX_CLASS
 
-FixStyle(damp,FixDamp)
+FixStyle(cundamp,FixCundamp)
 
 #else
 
-#ifndef LMP_FIX_DAMP_H
-#define LMP_FIX_DAMP_H
+#ifndef LMP_FIX_CUNDAMP_H
+#define LMP_FIX_CUNDAMP_H
 
 #include "fix.h"
 
 namespace LAMMPS_NS {
 
-class FixDamp : public Fix {
+class FixCundamp : public Fix {
  public:
-  FixDamp(class LAMMPS *, int, char **);
-  virtual ~FixDamp();
+  FixCundamp(class LAMMPS *, int, char **);
+  virtual ~FixCundamp();
   int setmask();
   void init();
   void setup(int);
@@ -40,7 +41,7 @@ class FixDamp : public Fix {
   void min_post_force(int);
 
  protected:
-  double *gamma;
+  double *gamma_linear,*gamma_angular;
   int ilevel_respa;
 };
 
