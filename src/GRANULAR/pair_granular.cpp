@@ -34,6 +34,7 @@ See the README file in the top-level LAMMPS directory.
 #include "error.h"
 #include "math_const.h"
 #include "math_special.h"
+#include "utils.h"
 
 using namespace LAMMPS_NS;
 using namespace MathConst;
@@ -139,7 +140,7 @@ void PairGranular::compute(int eflag, int vflag)
   double wr1,wr2,wr3;
   double vtr1,vtr2,vtr3,vrel;
 
-  double knfac, damp_normal, damp_normal_prefactor;
+  double knfac, damp_normal=0.0, damp_normal_prefactor;
   double k_tangential, damp_tangential;
   double Fne, Ft, Fdamp, Fntot, Fncrit, Fscrit, Frcrit;
   double fs, fs1, fs2, fs3, tor1, tor2, tor3;
@@ -305,6 +306,7 @@ void PairGranular::compute(int eflag, int vflag)
 
         delta = radsum - r;
         dR = delta*Reff;
+
         if (normal_model[itype][jtype] == JKR) {
           touch[jj] = 1;
           R2=Reff*Reff;
@@ -391,7 +393,7 @@ void PairGranular::compute(int eflag, int vflag)
         } else {
           Fncrit = fabs(Fne);// MODIFICATION by JBC for the MEL @ NU LAMMPS modifications. Critical limit force based on elastic normal force only, no account of damping
         }
-		Fscrit = tangential_coeffs[itype][jtype][2] * Fncrit;
+        Fscrit = tangential_coeffs[itype][jtype][2] * Fncrit;
 
         //------------------------------
         // tangential forces
@@ -464,20 +466,20 @@ void PairGranular::compute(int eflag, int vflag)
             } else fs1 = fs2 = fs3 = 0.0;
           }
         } else { // classic pair gran/hooke (no history)
-          fs = damp_tangential*vrel; // From documentation: F_{t,damp} = - \eta_t v_{t,rel}, no need for extra `meff`
-          if (vrel != 0.0) Ft = MIN(Fscrit,fs) / vrel; // From documentation: critical force `Fscrit` used, not elastic normal force `Fne`
+          fs = damp_tangential*vrel;
+          if (vrel != 0.0) Ft = MIN(Fscrit,fs) / vrel;
           else Ft = 0.0;
           fs1 = -Ft*vtr1;
           fs2 = -Ft*vtr2;
           fs3 = -Ft*vtr3;
         }
 
-	if (roll_model[itype][jtype] != ROLL_NONE ||
-	    twist_model[itype][jtype] != TWIST_NONE){
+        if (roll_model[itype][jtype] != ROLL_NONE ||
+            twist_model[itype][jtype] != TWIST_NONE){
           relrot1 = omega[i][0] - omega[j][0];
           relrot2 = omega[i][1] - omega[j][1];
           relrot3 = omega[i][2] - omega[j][2];
-	  // rolling velocity,
+          // rolling velocity,
           // see eq. 31 of Wang et al, Particuology v 23, p 49 (2015)
           // this is different from the Marshall papers,
           // which use the Bagi/Kuhn formulation
@@ -485,7 +487,7 @@ void PairGranular::compute(int eflag, int vflag)
           // - 0.5*((radj-radi)/radsum)*vtr1;
           // - 0.5*((radj-radi)/radsum)*vtr2;
           // - 0.5*((radj-radi)/radsum)*vtr3;
-	}
+        }
         //****************************************
         // rolling resistance
         //****************************************
@@ -635,7 +637,7 @@ void PairGranular::compute(int eflag, int vflag)
             torque[j][2] -= torroll3;
           }
         }
-        if (evflag) ev_tally_xyz(i,j,nlocal,0,//Should `newton_pair` passed instead of 0 ?
+        if (evflag) ev_tally_xyz(i,j,nlocal,force->newton_pair,
             0.0,0.0,fx,fy,fz,delx,dely,delz);
       }
     }
@@ -1114,7 +1116,7 @@ void PairGranular::init_style()
 
 double PairGranular::init_one(int i, int j)
 {
-  double cutoff;
+  double cutoff=0.0;
 
   if (setflag[i][j] == 0) {
     if ((normal_model[i][i] != normal_model[j][j]) ||
@@ -1250,20 +1252,20 @@ void PairGranular::read_restart(FILE *fp)
   int me = comm->me;
   for (i = 1; i <= atom->ntypes; i++) {
     for (j = i; j <= atom->ntypes; j++) {
-      if (me == 0) fread(&setflag[i][j],sizeof(int),1,fp);
+      if (me == 0) utils::sfread(FLERR,&setflag[i][j],sizeof(int),1,fp,NULL,error);
       MPI_Bcast(&setflag[i][j],1,MPI_INT,0,world);
       if (setflag[i][j]) {
         if (me == 0) {
-          fread(&normal_model[i][j],sizeof(int),1,fp);
-          fread(&damping_model[i][j],sizeof(int),1,fp);
-          fread(&tangential_model[i][j],sizeof(int),1,fp);
-          fread(&roll_model[i][j],sizeof(int),1,fp);
-          fread(&twist_model[i][j],sizeof(int),1,fp);
-          fread(normal_coeffs[i][j],sizeof(double),4,fp);
-          fread(tangential_coeffs[i][j],sizeof(double),3,fp);
-          fread(roll_coeffs[i][j],sizeof(double),3,fp);
-          fread(twist_coeffs[i][j],sizeof(double),3,fp);
-          fread(&cutoff_type[i][j],sizeof(double),1,fp);
+          utils::sfread(FLERR,&normal_model[i][j],sizeof(int),1,fp,NULL,error);
+          utils::sfread(FLERR,&damping_model[i][j],sizeof(int),1,fp,NULL,error);
+          utils::sfread(FLERR,&tangential_model[i][j],sizeof(int),1,fp,NULL,error);
+          utils::sfread(FLERR,&roll_model[i][j],sizeof(int),1,fp,NULL,error);
+          utils::sfread(FLERR,&twist_model[i][j],sizeof(int),1,fp,NULL,error);
+          utils::sfread(FLERR,normal_coeffs[i][j],sizeof(double),4,fp,NULL,error);
+          utils::sfread(FLERR,tangential_coeffs[i][j],sizeof(double),3,fp,NULL,error);
+          utils::sfread(FLERR,roll_coeffs[i][j],sizeof(double),3,fp,NULL,error);
+          utils::sfread(FLERR,twist_coeffs[i][j],sizeof(double),3,fp,NULL,error);
+          utils::sfread(FLERR,&cutoff_type[i][j],sizeof(double),1,fp,NULL,error);
         }
         MPI_Bcast(&normal_model[i][j],1,MPI_INT,0,world);
         MPI_Bcast(&damping_model[i][j],1,MPI_INT,0,world);
@@ -1374,22 +1376,6 @@ double PairGranular::single(int i, int j, int itype, int jtype,
   vn2 = ny*vnnr;
   vn3 = nz*vnnr;
 
-  double *rmass = atom->rmass;
-  int *mask = atom->mask;
-  mi = rmass[i];
-  mj = rmass[j];
-  if (fix_rigid) {
-    if (mass_rigid[i] > 0.0) mi = mass_rigid[i];
-    if (mass_rigid[j] > 0.0) mj = mass_rigid[j];
-  }
-
-  meff = mi*mj / (mi+mj);
-  if (mask[i] & freeze_group_bit) meff = mj;
-  if (mask[j] & freeze_group_bit) meff = mi;
-
-  delta = radsum - r;
-  dR = delta*Reff;
-
   // tangential component
 
   vt1 = vr1 - vn1;
@@ -1406,6 +1392,9 @@ double PairGranular::single(int i, int j, int itype, int jtype,
   // meff = effective mass of pair of particles
   // if I or J part of rigid body, use body mass
   // if I or J is frozen, meff is other particle
+
+  double *rmass = atom->rmass;
+  int *mask = atom->mask;
 
   mi = rmass[i];
   mj = rmass[j];
@@ -1475,7 +1464,6 @@ double PairGranular::single(int i, int j, int itype, int jtype,
       if (neighprev >= jnum) neighprev = 0;
       if (jlist[neighprev] == j) break;
     }
-	// the `history` pointer must not be modified here in single() function. already calculated in the compute() function. If modified here it changes the pair forces that have friction/twisting/rolling and history effects !
     history = &allhistory[size_history*neighprev];
   }
 
@@ -1539,8 +1527,8 @@ double PairGranular::single(int i, int j, int itype, int jtype,
         fs1 *= Fscrit/fs;
         fs2 *= Fscrit/fs;
         fs3 *= Fscrit/fs;
-		fs *= Fscrit/fs; // saves the correct value of `fs` to svector
-      } else fs1 = fs2 = fs3 = fs = 0.0; // saves the correct of `fs` value to svector
+                fs *= Fscrit/fs;
+      } else fs1 = fs2 = fs3 = fs = 0.0;
     }
 
   // classic pair gran/hooke (no history)
@@ -1551,14 +1539,15 @@ double PairGranular::single(int i, int j, int itype, int jtype,
     fs1 = -Ft*vtr1;
     fs2 = -Ft*vtr2;
     fs3 = -Ft*vtr3;
-	fs = Ft*vrel; // saves the correct value of `fs` to svector
+    fs = Ft*vrel;
   }
 
   //****************************************
   // rolling resistance
   //****************************************
 
-  if (roll_model[itype][jtype] != ROLL_NONE) {
+  if ((roll_model[itype][jtype] != ROLL_NONE)
+      || (twist_model[itype][jtype] != TWIST_NONE)) {
     relrot1 = omega[i][0] - omega[j][0];
     relrot2 = omega[i][1] - omega[j][1];
     relrot3 = omega[i][2] - omega[j][2];
@@ -1596,11 +1585,10 @@ double PairGranular::single(int i, int j, int itype, int jtype,
         fr1 *= Frcrit/fr;
         fr2 *= Frcrit/fr;
         fr3 *= Frcrit/fr;
-		fr *= Frcrit/fr; // saves the correct value of `fr` to svector
-      } else fr1 = fr2 = fr3 = fr = 0.0; // saves the correct value of `fr` to svector
+                fr *= Frcrit/fr;
+      } else fr1 = fr2 = fr3 = fr = 0.0;
     }
-
-  }
+  } else fr1 = fr2 = fr3 = fr = 0.0;
 
   //****************************************
   // twisting torque, including history effects
@@ -1624,13 +1612,13 @@ double PairGranular::single(int i, int j, int itype, int jtype,
     Mtcrit = mu_twist*Fncrit; // critical torque (eq 44)
     if (fabs(magtortwist) > Mtcrit) {
       magtortwist = -Mtcrit * signtwist; // eq 34
-    }
-  }
-	
+    } else magtortwist = 0.0;
+  } else magtortwist = 0.0;
+
   // set force and return no energy
-	
+
   fforce = Fntot*rinv;
-	
+
   // set single_extra quantities
 
   svector[0] = fs1;

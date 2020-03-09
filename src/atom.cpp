@@ -175,6 +175,8 @@ Atom::Atom(LAMMPS *lmp) : Pointers(lmp)
   spin_flag = eradius_flag = ervel_flag = erforce_flag = ervelforce_flag = 0;
   cs_flag = csforce_flag = vforce_flag = etag_flag = 0;
 
+  // USER-SPH, USER-MESO, and USER-DPD flags
+
   rho_flag = e_flag = cv_flag = vest_flag = 0;
   dpd_flag = edpd_flag = tdpd_flag = 0;
 
@@ -211,7 +213,7 @@ Atom::Atom(LAMMPS *lmp) : Pointers(lmp)
   tag_enable = 1;
   map_style = map_user = 0;
   map_tag_max = -1;
-  map_maxarray = map_nhash = -1;
+  map_maxarray = map_nhash = map_nbucket = -1;
 
   max_same = 0;
   sametag = NULL;
