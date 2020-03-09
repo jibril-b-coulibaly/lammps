@@ -49,8 +49,8 @@ if(PKG_USER-PLUMED)
     message(STATUS "PLUMED download requested - we will build our own")
     include(ExternalProject)
     ExternalProject_Add(plumed_build
-      URL https://github.com/plumed/plumed2/releases/download/v2.5.2/plumed-src-2.5.2.tgz
-      URL_MD5 bd2f18346c788eb54e1e52f4f6acf41a
+      URL https://github.com/plumed/plumed2/releases/download/v2.6.0/plumed-src-2.6.0.tgz
+      URL_MD5 204d2edae58d9b10ba3ad460cad64191
       BUILD_IN_SOURCE 1
       CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix=<INSTALL_DIR>
                                                ${CONFIGURE_REQUEST_PIC}
