@@ -238,6 +238,7 @@ int FixAdapt::setmask()
 
 void FixAdapt::post_constructor()
 {
+  if (!resetflag) return;
   if (!diamflag && !chgflag) return;
 
   // new id = fix-ID + FIX_STORE_ATTRIBUTE
@@ -434,10 +435,12 @@ void FixAdapt::init()
           error->all(FLERR,"Fix adapt requires atom attribute mass");
         if (discflag && domain->dimension!=2)
           error->all(FLERR,"Fix adapt requires 2d simulation");
+        if(scaleflag) diam_scale = 1.0;
       }
       if (ad->aparam == CHARGE) {
         if (!atom->q_flag)
           error->all(FLERR,"Fix adapt requires atom attribute charge");
+        if(scaleflag) chg_scale = 1.0;
       }
     }
   }
@@ -576,9 +579,6 @@ void FixAdapt::change_settings()
       if (ad->aparam == DIAMETER) {
         double density;
 
-        // Get initial diameter if `scale` keyword is used
-
-        double *vec = fix_diam->vstore;
         double *radius = atom->radius;
         double *rmass = atom->rmass;
         int *mask = atom->mask;
@@ -590,18 +590,15 @@ void FixAdapt::change_settings()
             if (discflag) density = rmass[i] / (MY_PI * radius[i]*radius[i]);
             else density = rmass[i] / (4.0*MY_PI/3.0 *
                                        radius[i]*radius[i]*radius[i]);
-            if (scaleflag) radius[i] = value * vec[i];
+            if (scaleflag) radius[i] = value * radius[i] / diam_scale;
             else radius[i] = 0.5*value;
             if (discflag) rmass[i] = MY_PI * radius[i]*radius[i] * density;
             else rmass[i] = 4.0*MY_PI/3.0 *
                             radius[i]*radius[i]*radius[i] * density;
           }
+        if (scaleflag) diam_scale = value;
 
       } else if (ad->aparam == CHARGE) {
-
-        // Get initial charge if `scale` keyword is used
-
-        double *vec = fix_chg->vstore;
         double *q = atom->q;
         int *mask = atom->mask;
         int nlocal = atom->nlocal;
@@ -609,9 +606,10 @@ void FixAdapt::change_settings()
 
         for (i = 0; i < nall; i++)
           if (mask[i] & groupbit) {
-            if (scaleflag) q[i] = value * vec[i];
+            if (scaleflag) q[i] = value * q[i] / chg_scale;
             else q[i] = value;
           }
+        if (scaleflag) chg_scale = value;
       }
     }
   }

@@ -1,4 +1,4 @@
-# jaguar = ORNL Jaguar Cray XT5, CC, native MPICH, FFTW
+# summit_kokkos = KOKKOS/CUDA, V100 GPU and Power9, IBM Spectrum MPI, nvcc compiler with gcc
 
 SHELL = /bin/sh
 
@@ -6,19 +6,23 @@ SHELL = /bin/sh
 # compiler/linker settings
 # specify flags and libraries needed for your compiler
 
-CXX =           CC
-CCFLAGS =	-g -O
+KOKKOS_ABSOLUTE_PATH = $(shell cd $(KOKKOS_PATH); pwd)
+
+CC =		$(KOKKOS_ABSOLUTE_PATH)/bin/nvcc_wrapper
+CCFLAGS =	-g -O3
 SHFLAGS =	-fPIC
 DEPFLAGS =	-M
 
-LINK =		$(CXX)
-LINKFLAGS =	-g -O
-LIB =           
+LINK =		$(KOKKOS_ABSOLUTE_PATH)/bin/nvcc_wrapper
+LINKFLAGS =	-g -O3
+LIB = 
 SIZE =		size
 
 ARCHIVE =	ar
 ARFLAGS =	-rc
 SHLIBFLAGS =	-shared
+KOKKOS_DEVICES = Cuda
+KOKKOS_ARCH = Power9,Volta70
 
 # ---------------------------------------------------------------------
 # LAMMPS-specific settings, all OPTIONAL
@@ -28,7 +32,7 @@ SHLIBFLAGS =	-shared
 # LAMMPS ifdef settings
 # see possible settings in Section 3.5 of the manual
 
-LMP_INC =	-DLAMMPS_GZIP -DNODE_PARTITION
+LMP_INC =	-DLAMMPS_GZIP
 
 # MPI library
 # see discussion in Section 3.4 of the manual
@@ -39,9 +43,12 @@ LMP_INC =	-DLAMMPS_GZIP -DNODE_PARTITION
 # PATH = path for MPI library
 # LIB = name of MPI library
 
-MPI_INC =       -DMPICH_SKIP_MPICXX 
+MY_MPI_EXE = $(shell which mpicxx)
+MY_MPI_PATH = $(dir ${MY_MPI_EXE})
+
+MPI_INC =       -DMPICH_SKIP_MPICXX -DOMPI_SKIP_MPICXX=1 -I${MY_MPI_PATH}../include
 MPI_PATH = 
-MPI_LIB =	-lmpich -lpthread
+MPI_LIB = -L${MY_MPI_PATH}../lib -lmpi_ibm
 
 # FFT library
 # see discussion in Section 3.5.2 of manual
@@ -50,9 +57,9 @@ MPI_LIB =	-lmpich -lpthread
 # PATH = path for FFT library
 # LIB = name of FFT library
 
-FFT_INC =       -DFFT_FFTW3 -I$(FFTW_INC)
-FFT_PATH =	 -L$(FFTW_DIR)
-FFT_LIB =	-lfftw3
+FFT_INC = -DFFT_CUFFT
+FFT_PATH = 
+FFT_LIB = -lcufft
 
 # JPEG and/or PNG library
 # see discussion in Section 3.5.4 of manual
