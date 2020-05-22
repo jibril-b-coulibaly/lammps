@@ -41,13 +41,15 @@ class FixAdapt : public Fix {
   void pre_force_respa(int,int,int);
   void set_arrays(int);
 
+  int pack_forward_comm(int, int *,double *, int, int *);
+  void unpack_forward_comm(int, int, double *);
+
  private:
   int nadapt,resetflag,scaleflag;
   int anypair, anybond;
   int nlevels_respa;
   char *id_fix_diam,*id_fix_chg;
   class FixStore *fix_diam,*fix_chg;
-  double diam_scale,chg_scale;
   int discflag;
 
   struct Adapt {

@@ -15,6 +15,7 @@
 #include <cstring>
 #include "atom.h"
 #include "bond.h"
+#include "comm.h"
 #include "domain.h"
 #include "update.h"
 #include "group.h"
@@ -50,6 +51,7 @@ nadapt(0), id_fix_diam(NULL), id_fix_chg(NULL), adapt(NULL)
 
   dynamic_group_allow = 1;
   create_attribute = 1;
+  comm_forward = 2;
 
   // count # of adaptations
 
@@ -238,7 +240,6 @@ int FixAdapt::setmask()
 
 void FixAdapt::post_constructor()
 {
-  if (!resetflag) return;
   if (!diamflag && !chgflag) return;
 
   // new id = fix-ID + FIX_STORE_ATTRIBUTE
@@ -435,12 +436,10 @@ void FixAdapt::init()
           error->all(FLERR,"Fix adapt requires atom attribute mass");
         if (discflag && domain->dimension!=2)
           error->all(FLERR,"Fix adapt requires 2d simulation");
-        if(scaleflag) diam_scale = 1.0;
       }
       if (ad->aparam == CHARGE) {
         if (!atom->q_flag)
           error->all(FLERR,"Fix adapt requires atom attribute charge");
-        if(scaleflag) chg_scale = 1.0;
       }
     }
   }
@@ -576,40 +575,46 @@ void FixAdapt::change_settings()
       // reset radius from diameter
       // also scale rmass to new value
 
+      // Communicate stored radius of ghost atoms for scale
+
+      if(scaleflag) comm->forward_comm_fix(this);
+
       if (ad->aparam == DIAMETER) {
         double density;
 
+        double *vec = fix_diam->vstore;
         double *radius = atom->radius;
         double *rmass = atom->rmass;
         int *mask = atom->mask;
         int nlocal = atom->nlocal;
         int nall = nlocal + atom->nghost;
 
+
         for (i = 0; i < nall; i++)
           if (mask[i] & groupbit) {
             if (discflag) density = rmass[i] / (MY_PI * radius[i]*radius[i]);
             else density = rmass[i] / (4.0*MY_PI/3.0 *
                                        radius[i]*radius[i]*radius[i]);
-            if (scaleflag) radius[i] = value * radius[i] / diam_scale;
+            if (scaleflag) radius[i] = value * vec[i];
             else radius[i] = 0.5*value;
             if (discflag) rmass[i] = MY_PI * radius[i]*radius[i] * density;
             else rmass[i] = 4.0*MY_PI/3.0 *
                             radius[i]*radius[i]*radius[i] * density;
           }
-        if (scaleflag) diam_scale = value;
 
       } else if (ad->aparam == CHARGE) {
+        double *vec = fix_chg->vstore;
         double *q = atom->q;
         int *mask = atom->mask;
         int nlocal = atom->nlocal;
         int nall = nlocal + atom->nghost;
 
+
         for (i = 0; i < nall; i++)
           if (mask[i] & groupbit) {
-            if (scaleflag) q[i] = value * q[i] / chg_scale;
+            if (scaleflag) q[i] = value * vec[i];
             else q[i] = value;
           }
-        if (scaleflag) chg_scale = value;
       }
     }
   }
@@ -677,6 +682,7 @@ void FixAdapt::restore_settings()
         double *rmass = atom->rmass;
         int *mask = atom->mask;
         int nlocal = atom->nlocal;
+        
 
         for (int i = 0; i < nlocal; i++)
           if (mask[i] & groupbit) {
@@ -714,4 +720,42 @@ void FixAdapt::set_arrays(int i)
 {
   if (fix_diam) fix_diam->vstore[i] = atom->radius[i];
   if (fix_chg) fix_chg->vstore[i] = atom->q[i];
+}
+
+/* ---------------------------------------------------------------------- */
+
+int FixAdapt::pack_forward_comm(int n, int *list, double *buf,int pbc_flag, int *pbc)
+{
+	int m = 0;
+  
+  if(diamflag) {
+    double *vec = fix_diam->vstore;
+    for(m = 0 ; m < n ; m++) buf[m] = vec[list[m]];
+  }
+
+  if(chgflag) {
+    double *vec = fix_chg->vstore;
+    for(m = n ; m < 2*n ; m++) buf[m] = vec[list[m-n]];
+  }
+  
+	return m;
+}
+
+/* ---------------------------------------------------------------------- */
+
+void FixAdapt::unpack_forward_comm(int n, int first, double *buf)
+{
+	int i,m;
+  
+  if(diamflag) {
+    m = 0;
+    double *vec = fix_diam->vstore;
+    for(i = first ; i < first+n ; i++) vec[i] = buf[m++];
+  }
+
+  if(chgflag) {
+    m = n;
+    double *vec = fix_chg->vstore;
+    for(i = first ; i < first+n ; i++) vec[i] = buf[m++];
+  }
 }
