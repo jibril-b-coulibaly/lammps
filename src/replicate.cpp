@@ -23,6 +23,8 @@
 #include "accelerator_kokkos.h"
 #include "memory.h"
 #include "error.h"
+#include "utils.h"
+#include "fmt/format.h"
 
 using namespace LAMMPS_NS;
 
@@ -46,7 +48,7 @@ void Replicate::command(int narg, char **arg)
   int me = comm->me;
   int nprocs = comm->nprocs;
 
-  if (me == 0 && screen) fprintf(screen,"Replicating atoms ...\n");
+  if (me == 0) utils::logmesg(lmp,"Replicating atoms ...\n");
 
   // nrep = total # of replications
 
@@ -185,6 +187,11 @@ void Replicate::command(int narg, char **arg)
   atom->nangles = old->nangles * nrep;
   atom->ndihedrals = old->ndihedrals * nrep;
   atom->nimpropers = old->nimpropers * nrep;
+
+  atom->nellipsoids = old->nellipsoids * nrep;
+  atom->nlines = old->nlines * nrep;
+  atom->ntris = old->ntris * nrep;
+  atom->nbodies = old->nbodies * nrep;
 
   atom->ntypes = old->ntypes;
   atom->nbondtypes = old->nbondtypes;
@@ -342,12 +349,14 @@ void Replicate::command(int narg, char **arg)
     int size_buf_all = 0;
     MPI_Allreduce(&n, &size_buf_all, 1, MPI_INT, MPI_SUM, world);
 
-    if (me == 0 && screen) {
-      fprintf(screen,"  bounding box image = (%i %i %i) to (%i %i %i)\n",
-              _imagelo[0],_imagelo[1],_imagelo[2],
-              _imagehi[0],_imagehi[1],_imagehi[2]);
-      fprintf(screen,"  bounding box extra memory = %.2f MB\n",
-              (double)size_buf_all*sizeof(double)/1024/1024);
+    if (me == 0) {
+      auto mesg = fmt::format("  bounding box image = ({} {} {}) "
+                              "to ({} {} {})\n",
+                              _imagelo[0],_imagelo[1],_imagelo[2],
+                              _imagehi[0],_imagehi[1],_imagehi[2]);
+      mesg += fmt::format("  bounding box extra memory = {:.2f} MB\n",
+                          (double)size_buf_all*sizeof(double)/1024/1024);
+      utils::logmesg(lmp,mesg);
     }
 
     // rnk offsets
@@ -625,11 +634,10 @@ void Replicate::command(int narg, char **arg)
     int sum = 0;
     MPI_Reduce(&num_replicas_added, &sum, 1, MPI_INT, MPI_SUM, 0, world);
     double avg = (double) sum / nprocs;
-    if (me == 0 && screen)
-      fprintf(screen,"  average # of replicas added to proc = %.2f "
-              "out of %i (%.2f %%)\n",
-              avg,nx*ny*nz,avg/(nx*ny*nz)*100.0);
-
+    if (me == 0)
+      utils::logmesg(lmp,fmt::format("  average # of replicas added to proc ="
+                                     " {:.2f} out of {} ({:.2f}%)\n",
+                                     avg,nx*ny*nz,avg/(nx*ny*nz)*100.0));
   } else {
 
     for (int iproc = 0; iproc < nprocs; iproc++) {
@@ -733,8 +741,7 @@ void Replicate::command(int narg, char **arg)
   MPI_Allreduce(&nblocal,&natoms,1,MPI_LMP_BIGINT,MPI_SUM,world);
 
   if (me == 0) {
-    if (screen) fprintf(screen,"  " BIGINT_FORMAT " atoms\n",natoms);
-    if (logfile) fprintf(logfile,"  " BIGINT_FORMAT " atoms\n",natoms);
+    utils::logmesg(lmp,fmt::format("  {} atoms\n",natoms));
   }
 
   if (natoms != atom->natoms)
@@ -742,26 +749,16 @@ void Replicate::command(int narg, char **arg)
 
   if (me == 0) {
     if (atom->nbonds) {
-      if (screen) fprintf(screen,"  " BIGINT_FORMAT " bonds\n",atom->nbonds);
-      if (logfile) fprintf(logfile,"  " BIGINT_FORMAT " bonds\n",atom->nbonds);
+      utils::logmesg(lmp,fmt::format("  {} bonds\n",atom->nbonds));
     }
     if (atom->nangles) {
-      if (screen) fprintf(screen,"  " BIGINT_FORMAT " angles\n",
-                          atom->nangles);
-      if (logfile) fprintf(logfile,"  " BIGINT_FORMAT " angles\n",
-                           atom->nangles);
+      utils::logmesg(lmp,fmt::format("  {} angles\n",atom->nangles));
     }
     if (atom->ndihedrals) {
-      if (screen) fprintf(screen,"  " BIGINT_FORMAT " dihedrals\n",
-                          atom->ndihedrals);
-      if (logfile) fprintf(logfile,"  " BIGINT_FORMAT " dihedrals\n",
-                           atom->ndihedrals);
+      utils::logmesg(lmp,fmt::format("  {} dihedrals\n",atom->ndihedrals));
     }
     if (atom->nimpropers) {
-      if (screen) fprintf(screen,"  " BIGINT_FORMAT " impropers\n",
-                          atom->nimpropers);
-      if (logfile) fprintf(logfile,"  " BIGINT_FORMAT " impropers\n",
-                           atom->nimpropers);
+      utils::logmesg(lmp,fmt::format("  {} impropers\n",atom->nimpropers));
     }
   }
 
@@ -786,12 +783,8 @@ void Replicate::command(int narg, char **arg)
   // total time
 
   MPI_Barrier(world);
-  double time2 = MPI_Wtime();
 
-  if (me == 0) {
-    if (screen)
-      fprintf(screen,"  replicate CPU = %g secs\n",time2-time1);
-    if (logfile)
-      fprintf(logfile,"  replicate CPU = %g secs\n",time2-time1);
-  }
+  if (me == 0)
+    utils::logmesg(lmp,fmt::format("  replicate CPU = {:.3f} seconds\n",
+                                   MPI_Wtime()-time1));
 }

@@ -36,6 +36,8 @@
 #include "memory.h"
 #include "error.h"
 #include "modify.h"
+#include "utils.h"
+#include "fmt/format.h"
 
 using namespace LAMMPS_NS;
 using namespace MathConst;
@@ -80,7 +82,7 @@ void Set::command(int narg, char **arg)
   // loop over keyword/value pairs
   // call appropriate routine to reset attributes
 
-  if (comm->me == 0 && screen) fprintf(screen,"Setting atom values ...\n");
+  if (comm->me == 0) utils::logmesg(lmp,"Setting atom values ...\n");
 
   int allcount,origarg;
 
@@ -601,23 +603,12 @@ void Set::command(int narg, char **arg)
     MPI_Allreduce(&count,&allcount,1,MPI_INT,MPI_SUM,world);
 
     if (comm->me == 0) {
-
-      if (screen) {
-        if (strcmp(arg[origarg],"cc") == 0)
-          fprintf(screen,"  %d settings made for %s index %s\n",
-                  allcount,arg[origarg],arg[origarg+1]);
-        else
-          fprintf(screen,"  %d settings made for %s\n",
-                  allcount,arg[origarg]);
-      }
-      if (logfile) {
-        if (strcmp(arg[origarg],"cc") == 0)
-          fprintf(logfile,"  %d settings made for %s index %s\n",
-                  allcount,arg[origarg],arg[origarg+1]);
-        else
-          fprintf(logfile,"  %d settings made for %s\n",
-                  allcount,arg[origarg]);
-      }
+      if (strcmp(arg[origarg],"cc") == 0)
+        utils::logmesg(lmp,fmt::format("  {} settings made for {} index {}\n",
+                       allcount,arg[origarg],arg[origarg+1]));
+      else
+        utils::logmesg(lmp,fmt::format("  {} settings made for {}\n",
+                       allcount,arg[origarg]));
     }
   }
 
@@ -1273,7 +1264,7 @@ void Set::topology(int keyword)
   // init entire system since comm->exchange is done
   // comm::init needs neighbor::init needs pair::init needs kspace::init, etc
 
-  if (comm->me == 0 && screen) fprintf(screen,"  system init for set ...\n");
+  if (comm->me == 0) utils::logmesg(lmp,"  system init for set ...\n");
   lmp->init();
 
   if (domain->triclinic) domain->x2lamda(atom->nlocal);

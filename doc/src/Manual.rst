@@ -27,16 +27,16 @@ all LAMMPS development is coordinated.
 The content for this manual is part of the LAMMPS distribution.  You
 can build a local copy of the Manual as HTML pages or a PDF file, by
 following the steps on the :doc:`Manual build <Manual_build>` doc page.
-There is also a `Developer.pdf <Developer.pdf>`_ document which gives
-a brief description of the basic code structure of LAMMPS.
+The manual is split into two parts: 1) User documentation and 2) Programmer documentation.
 
 ----------
 
-Once you are familiar with LAMMPS, you may want to bookmark :doc:`this page <Commands>` since it gives quick access to a doc page for
+Once you are familiar with LAMMPS, you may want to bookmark :doc:`this page <Commands_all>` since it gives quick access to a doc page for
 every LAMMPS command.
 
 .. _lws: https://lammps.sandia.gov
 
+.. _user_documentation:
 .. toctree::
    :maxdepth: 2
    :numbered: 3
@@ -58,6 +58,19 @@ every LAMMPS command.
    Python_head
    Errors
    Manual_build
+
+.. _programmer_documentation:
+.. toctree::
+   :maxdepth: 2
+   :numbered: 3
+   :caption: Programmer Documentation
+   :name: progdoc
+   :includehidden:
+
+   pg_developer
+..   pg_library
+..   pg_modify
+..   pg_base
 
 .. toctree::
    :caption: Index

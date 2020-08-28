@@ -55,7 +55,7 @@ to specify the path for the potential file.
 
 As an example, imagine a file SiC.gw has Gao-Weber values for Si and C.
 If your LAMMPS simulation has 4 atoms types and you want the first 3 to
-be Si, and the 4th to be C, you would use the following pair_coeff command:
+be Si, and the fourth to be C, you would use the following pair_coeff command:
 
 .. code-block:: LAMMPS
 
@@ -79,7 +79,8 @@ to learn more details.
 
 ----------
 
-**Mixing, shift, table, tail correction, restart, rRESPA info**\ :
+Mixing, shift, table, tail correction, restart, rRESPA info
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 For atom type pairs I,J and I != J, where types I and J correspond to
 two different element types, mixing is performed by LAMMPS as
@@ -118,7 +119,10 @@ Related commands
 
 :doc:`pair_coeff <pair_coeff>`
 
-**Default:** none
+Default
+"""""""
+
+none
 
 ----------
 
