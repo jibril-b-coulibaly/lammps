@@ -1330,19 +1330,20 @@ and a general discussion of how type labels can be used.
 *Ellipsoids* section:
 
 * one line per ellipsoid
-* line syntax: atom-ID shapex shapey shapez quatw quati quatj quatk
+* line syntax: atom-ID shapex shapey shapez quatw quati quatj quatk block1 block2
 
   .. parsed-literal::
 
        atom-ID = ID of atom which is an ellipsoid
        shapex,shapey,shapez = 3 diameters of ellipsoid (distance units)
        quatw,quati,quatj,quatk = quaternion components for orientation of atom
+       block1,block2 = 2 blockiness parameters for super-ellipsoids
 
 * example:
 
   .. parsed-literal::
 
-       12 1 2 1 1 0 0 0
+       12 1 2 1 1 0 0 0 2 2
 
 The *Ellipsoids* section must appear if :doc:`atom_style ellipsoid
 <atom_style>` is used and any atoms are listed in the *Atoms* section
@@ -1370,6 +1371,12 @@ for each ellipsoid should be specified for its orientation relative to
 the standard x,y,z coordinate axes.  When the system is converted to a
 restricted triclinic box, the ellipsoid quaternions will be altered to
 reflect the new orientation of the ellipsoid.
+The blockiness values *block1*, *block2* generalize the geometry to a super
+ellipsoid for use in granualr simulations.  Sections through the center and
+parallel to the z-axis are superellipses with squareness *block1* and sections
+in the x-y plane are superellipses with squareness *block2*.  These parameters
+are optional and default to a value of 2, recovering ellipsoid geometry.
+When specified, both values must be greater than or equal to 2.
 
 The *Ellipsoids* section must appear after the *Atoms* section.
 
