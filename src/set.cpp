@@ -44,7 +44,7 @@ using namespace MathConst;
 
 enum{ATOM_SELECT,MOL_SELECT,TYPE_SELECT,GROUP_SELECT,REGION_SELECT};
 
-enum{ANGLE,ANGMOM,APIP_LAMBDA,BOND,CC,CHARGE,DENSITY,DIAMETER,DIHEDRAL,DIPOLE,
+enum{ANGLE,ANGMOM,APIP_LAMBDA,BLOCK,BOND,CC,CHARGE,DENSITY,DIAMETER,DIHEDRAL,DIPOLE,
   DIPOLE_RANDOM,DPD_THETA,EDPD_CV,EDPD_TEMP,EPSILON,IMAGE,IMPROPER,LENGTH,
   MASS,MOLECULE,OMEGA,QUAT,QUAT_RANDOM,RADIUS_ELECTRON,RHEO_STATUS,SHAPE,
   SMD_CONTACT_RADIUS,SMD_MASS_DENSITY,SPH_CV,SPH_E,SPH_RHO,
@@ -212,6 +212,10 @@ void Set::process_args(int caller_flag, int narg, char **arg)
       action->keyword = APIP_LAMBDA;
       process_apip_lambda(iarg,narg,arg,action);
       invoke_choice[naction++] = &Set::invoke_apip_lambda;
+    } else if (strcmp(arg[iarg],"block") == 0) {
+      action->keyword = BLOCK;
+      process_block(iarg, narg, arg, action);
+      invoke_choice[naction++] = &Set::invoke_block;
     } else if (strcmp(arg[iarg],"bond") == 0) {
       action->keyword = BOND;
       process_bond(iarg,narg,arg,action);
@@ -1110,6 +1114,57 @@ void Set::invoke_apip_lambda(Action *action)
       apip_lambda[i] = lambda;
     }
   }
+}
+
+/* ---------------------------------------------------------------------- */
+
+void Set::process_block(int &iarg, int narg, char **arg, Action *action)
+{
+  if (!atom->ellipsoid_flag)
+    error->all(FLERR,"Cannot set attribute {} for atom style {}", arg[iarg], atom->get_style());
+  if (iarg+3 > narg) utils::missing_cmd_args(FLERR, "set block", error);
+  if (utils::strmatch(arg[iarg+1],"^v_")) varparse(arg[iarg+1],1,action);
+  else {
+    action->dvalue1 = utils::numeric(FLERR,arg[iarg+1],false,lmp);
+    if (action->dvalue1 < 2.0) error->one(FLERR,"Invalid block in set command");
+  }
+  if (utils::strmatch(arg[iarg+2],"^v_")) varparse(arg[iarg+2],2,action);
+  else {
+    action->dvalue2 = utils::numeric(FLERR,arg[iarg+2],false,lmp);
+    if (action->dvalue2 < 2.0) error->one(FLERR,"Invalid block in set command");
+  }
+  iarg += 3;
+}
+
+
+void Set::invoke_block(Action *action)
+{
+  int nlocal = atom->nlocal;
+  auto *avec_ellipsoid = dynamic_cast<AtomVecEllipsoid *>(atom->style_match("ellipsoid"));
+
+  int varflag = action->varflag;
+  double block1 = 0.0, block2 = 0.0;
+  if (!action->varflag1) xvalue = action->dvalue1;
+  if (!action->varflag2) block2 = action->dvalue2;
+
+  for (int i = 0; i < nlocal; i++) {
+    if (!select[i]) continue;
+
+    if (varflag) {
+      if (action->varflag1) block1 = vec1[i];
+      if (action->varflag2) block2 = vec2[i];
+      if (block1 < 2.0 || block2 < 2.0)
+        error->one(FLERR, Error::NOLASTLINE, "Invalid block in set command");
+    }
+
+    avec_ellipsoid->set_block(i, block1, block2);
+  }
+
+  // update global ellipsoid count
+  // TODO: Not sure if block should update the ellipsoid count
+  //       what happens if you call this twice in invike_shape and invoke_block ?
+  //   bigint nlocal_bonus = avec_ellipsoid->nlocal_bonus;
+  //   MPI_Allreduce(&nlocal_bonus,&atom->nellipsoids,1,MPI_LMP_BIGINT,MPI_SUM,world);
 }
 
 /* ---------------------------------------------------------------------- */
