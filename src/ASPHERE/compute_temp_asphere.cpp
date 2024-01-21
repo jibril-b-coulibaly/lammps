@@ -33,7 +33,6 @@
 using namespace LAMMPS_NS;
 
 enum { ROTATE, ALL };
-static constexpr double INERTIA = 0.2;    // moment of inertia prefactor for ellipsoid
 
 /* ---------------------------------------------------------------------- */
 
@@ -222,9 +221,7 @@ double ComputeTempAsphere::compute_scalar()
         shape = bonus[ellipsoid[i]].shape;
         quat = bonus[ellipsoid[i]].quat;
 
-        inertia[0] = INERTIA*rmass[i] * (shape[1]*shape[1]+shape[2]*shape[2]);
-        inertia[1] = INERTIA*rmass[i] * (shape[0]*shape[0]+shape[2]*shape[2]);
-        inertia[2] = INERTIA*rmass[i] * (shape[0]*shape[0]+shape[1]*shape[1]);
+        MathExtra::inertia_ellipsoid_principal(shape, rmass[i], inertia);
 
         // wbody = angular velocity in body frame
 
@@ -247,9 +244,7 @@ double ComputeTempAsphere::compute_scalar()
         shape = bonus[ellipsoid[i]].shape;
         quat = bonus[ellipsoid[i]].quat;
 
-        inertia[0] = INERTIA*rmass[i] * (shape[1]*shape[1]+shape[2]*shape[2]);
-        inertia[1] = INERTIA*rmass[i] * (shape[0]*shape[0]+shape[2]*shape[2]);
-        inertia[2] = INERTIA*rmass[i] * (shape[0]*shape[0]+shape[1]*shape[1]);
+        MathExtra::inertia_ellipsoid_principal(shape, rmass[i], inertia);
 
         // wbody = angular velocity in body frame
 
@@ -321,9 +316,7 @@ void ComputeTempAsphere::compute_vector()
         shape = bonus[ellipsoid[i]].shape;
         quat = bonus[ellipsoid[i]].quat;
 
-        inertia[0] = INERTIA*massone * (shape[1]*shape[1]+shape[2]*shape[2]);
-        inertia[1] = INERTIA*massone * (shape[0]*shape[0]+shape[2]*shape[2]);
-        inertia[2] = INERTIA*massone * (shape[0]*shape[0]+shape[1]*shape[1]);
+        MathExtra::inertia_ellipsoid_principal(shape, massone, inertia);
 
         // wbody = angular velocity in body frame
 
@@ -353,9 +346,7 @@ void ComputeTempAsphere::compute_vector()
         quat = bonus[ellipsoid[i]].quat;
         massone = rmass[i];
 
-        inertia[0] = INERTIA*massone * (shape[1]*shape[1]+shape[2]*shape[2]);
-        inertia[1] = INERTIA*massone * (shape[0]*shape[0]+shape[2]*shape[2]);
-        inertia[2] = INERTIA*massone * (shape[0]*shape[0]+shape[1]*shape[1]);
+        MathExtra::inertia_ellipsoid_principal(shape, massone, inertia);
 
         // wbody = angular velocity in body frame
 
