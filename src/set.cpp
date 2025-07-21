@@ -1144,7 +1144,7 @@ void Set::invoke_block(Action *action)
 
   int varflag = action->varflag;
   double block1 = 0.0, block2 = 0.0;
-  if (!action->varflag1) xvalue = action->dvalue1;
+  if (!action->varflag1) block1 = action->dvalue1;
   if (!action->varflag2) block2 = action->dvalue2;
 
   for (int i = 0; i < nlocal; i++) {
