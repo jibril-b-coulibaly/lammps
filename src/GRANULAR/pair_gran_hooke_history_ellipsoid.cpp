@@ -15,7 +15,7 @@
    Contributing authors: Leo Silbert (SNL), Gary Grest (SNL)
 ------------------------------------------------------------------------- */
 
-#include "pair_gran_hooke_history.h"
+#include "pair_gran_hooke_history_ellipsoid.h"
 
 #include "atom.h"
 #include "comm.h"
@@ -29,6 +29,7 @@
 #include "neigh_list.h"
 #include "neighbor.h"
 #include "update.h"
+#include "math_extra.h" // probably needed for some computations
 
 #include <cmath>
 #include <cstring>
@@ -37,14 +38,14 @@ using namespace LAMMPS_NS;
 
 /* ---------------------------------------------------------------------- */
 
-PairGranHookeHistory::PairGranHookeHistory(LAMMPS *lmp) : Pair(lmp)
+PairGranHookeHistoryEllipsoid::PairGranHookeHistoryEllipsoid(LAMMPS *lmp) : Pair(lmp)
 {
   single_enable = 1;
   no_virial_fdotr_compute = 1;
   centroidstressflag = CENTROID_NOTAVAIL;
   finitecutflag = 1;
   history = 1;
-  size_history = 3;
+  size_history = 7;  // shear[3], prevevious_cp[3], pair_was_in_contact_flag
 
   single_extra = 10;
   svector = new double[10];
@@ -72,7 +73,7 @@ PairGranHookeHistory::PairGranHookeHistory(LAMMPS *lmp) : Pair(lmp)
 
 /* ---------------------------------------------------------------------- */
 
-PairGranHookeHistory::~PairGranHookeHistory()
+PairGranHookeHistoryEllipsoid::~PairGranHookeHistoryEllipsoid()
 {
   if (copymode) return;
 
@@ -98,7 +99,7 @@ PairGranHookeHistory::~PairGranHookeHistory()
 
 /* ---------------------------------------------------------------------- */
 
-void PairGranHookeHistory::compute(int eflag, int vflag)
+void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
 {
   int i, j, ii, jj, inum, jnum;
   double xtmp, ytmp, ztmp, delx, dely, delz, fx, fy, fz;
@@ -347,7 +348,7 @@ void PairGranHookeHistory::compute(int eflag, int vflag)
    allocate all arrays
 ------------------------------------------------------------------------- */
 
-void PairGranHookeHistory::allocate()
+void PairGranHookeHistoryEllipsoid::allocate()
 {
   allocated = 1;
   int n = atom->ntypes;
@@ -368,7 +369,7 @@ void PairGranHookeHistory::allocate()
    global settings
 ------------------------------------------------------------------------- */
 
-void PairGranHookeHistory::settings(int narg, char **arg)
+void PairGranHookeHistoryEllipsoid::settings(int narg, char **arg)
 {
   if (narg != 6 && narg != 7) error->all(FLERR, "Illegal pair_style command");
 
@@ -405,7 +406,7 @@ void PairGranHookeHistory::settings(int narg, char **arg)
    set coeffs for one or more type pairs
 ------------------------------------------------------------------------- */
 
-void PairGranHookeHistory::coeff(int narg, char **arg)
+void PairGranHookeHistoryEllipsoid::coeff(int narg, char **arg)
 {
   if (narg > 2) error->all(FLERR, "Incorrect args for pair coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
@@ -429,16 +430,16 @@ void PairGranHookeHistory::coeff(int narg, char **arg)
    init specific to this pair style
 ------------------------------------------------------------------------- */
 
-void PairGranHookeHistory::init_style()
+void PairGranHookeHistoryEllipsoid::init_style()
 {
   int i;
 
   // error and warning checks
 
-  if (!atom->radius_flag || !atom->rmass_flag || !atom->omega_flag)
-    error->all(FLERR, "Pair gran/h* requires atom attributes radius, rmass, omega");
+  if (!atom->radius_flag || !atom->rmass_flag || !atom->omega_flag || !atom->ellipsoid_flag)
+    error->all(FLERR, "Pair gran/h/ellipsoid* requires atom attributes radius, rmass, omega and ellipdoid flag");
   if (comm->ghost_velocity == 0)
-    error->all(FLERR, "Pair gran/h* requires ghost atoms store velocity");
+    error->all(FLERR, "Pair gran/h/ellipsoid* requires ghost atoms store velocity");
 
   // need a granular neighbor list
 
@@ -505,6 +506,8 @@ void PairGranHookeHistory::init_style()
     }
   }
 
+  // since for ellipsoids radius is the maximum of the three axes, no need to change this part
+
   double *radius = atom->radius;
   int *mask = atom->mask;
   int *type = atom->type;
@@ -533,7 +536,7 @@ void PairGranHookeHistory::init_style()
    init for one type pair i,j and corresponding j,i
 ------------------------------------------------------------------------- */
 
-double PairGranHookeHistory::init_one(int i, int j)
+double PairGranHookeHistoryEllipsoid::init_one(int i, int j)
 {
   if (!allocated) allocate();
 
@@ -550,7 +553,7 @@ double PairGranHookeHistory::init_one(int i, int j)
   proc 0 writes to restart file
 ------------------------------------------------------------------------- */
 
-void PairGranHookeHistory::write_restart(FILE *fp)
+void PairGranHookeHistoryEllipsoid::write_restart(FILE *fp)
 {
   write_restart_settings(fp);
 
@@ -563,7 +566,7 @@ void PairGranHookeHistory::write_restart(FILE *fp)
   proc 0 reads from restart file, bcasts
 ------------------------------------------------------------------------- */
 
-void PairGranHookeHistory::read_restart(FILE *fp)
+void PairGranHookeHistoryEllipsoid::read_restart(FILE *fp)
 {
   read_restart_settings(fp);
   allocate();
@@ -581,7 +584,7 @@ void PairGranHookeHistory::read_restart(FILE *fp)
   proc 0 writes to restart file
 ------------------------------------------------------------------------- */
 
-void PairGranHookeHistory::write_restart_settings(FILE *fp)
+void PairGranHookeHistoryEllipsoid::write_restart_settings(FILE *fp)
 {
   fwrite(&kn, sizeof(double), 1, fp);
   fwrite(&kt, sizeof(double), 1, fp);
@@ -595,7 +598,7 @@ void PairGranHookeHistory::write_restart_settings(FILE *fp)
   proc 0 reads from restart file, bcasts
 ------------------------------------------------------------------------- */
 
-void PairGranHookeHistory::read_restart_settings(FILE *fp)
+void PairGranHookeHistoryEllipsoid::read_restart_settings(FILE *fp)
 {
   if (comm->me == 0) {
     utils::sfread(FLERR, &kn, sizeof(double), 1, fp, nullptr, error);
@@ -615,14 +618,14 @@ void PairGranHookeHistory::read_restart_settings(FILE *fp)
 
 /* ---------------------------------------------------------------------- */
 
-void PairGranHookeHistory::reset_dt()
+void PairGranHookeHistoryEllipsoid::reset_dt()
 {
   dt = update->dt;
 }
 
 /* ---------------------------------------------------------------------- */
 
-double PairGranHookeHistory::single(int i, int j, int /*itype*/, int /*jtype*/, double rsq,
+double PairGranHookeHistoryEllipsoid::single(int i, int j, int /*itype*/, int /*jtype*/, double rsq,
                                     double /*factor_coul*/, double /*factor_lj*/, double &fforce)
 {
   double radi, radj, radsum;
@@ -774,7 +777,7 @@ double PairGranHookeHistory::single(int i, int j, int /*itype*/, int /*jtype*/, 
 
 /* ---------------------------------------------------------------------- */
 
-int PairGranHookeHistory::pack_forward_comm(int n, int *list, double *buf, int /*pbc_flag*/,
+int PairGranHookeHistoryEllipsoid::pack_forward_comm(int n, int *list, double *buf, int /*pbc_flag*/,
                                             int * /*pbc*/)
 {
   int i, j, m;
@@ -789,7 +792,7 @@ int PairGranHookeHistory::pack_forward_comm(int n, int *list, double *buf, int /
 
 /* ---------------------------------------------------------------------- */
 
-void PairGranHookeHistory::unpack_forward_comm(int n, int first, double *buf)
+void PairGranHookeHistoryEllipsoid::unpack_forward_comm(int n, int first, double *buf)
 {
   int i, m, last;
 
@@ -802,7 +805,7 @@ void PairGranHookeHistory::unpack_forward_comm(int n, int first, double *buf)
    memory usage of local atom-based arrays
 ------------------------------------------------------------------------- */
 
-double PairGranHookeHistory::memory_usage()
+double PairGranHookeHistoryEllipsoid::memory_usage()
 {
   double bytes = (double) nmax * sizeof(double);
   return bytes;
@@ -812,7 +815,7 @@ double PairGranHookeHistory::memory_usage()
    self-interaction range of particle
 ------------------------------------------------------------------------- */
 
-double PairGranHookeHistory::atom2cut(int i)
+double PairGranHookeHistoryEllipsoid::atom2cut(int i)
 {
   double cut = atom->radius[i] * 2;
   return cut;
@@ -822,8 +825,103 @@ double PairGranHookeHistory::atom2cut(int i)
    maximum interaction range for two finite particles
 ------------------------------------------------------------------------- */
 
-double PairGranHookeHistory::radii2cut(double r1, double r2)
+double PairGranHookeHistoryEllipsoid::radii2cut(double r1, double r2)
 {
   double cut = r1 + r2;
   return cut;
 }
+
+
+/* ----------------------------------------------------------------------
+   express local (particle level) to global (system level) coordinates
+------------------------------------------------------------------------- */
+
+void PairGranHookeHistoryEllipsoid::local2global_vector(const double v[3], const double *quat, double global_v[3]){
+
+   MathExtra::quatrotvec(const_cast<double*>(quat) , const_cast<double*>(v), global_v);
+};
+
+void PairGranHookeHistoryEllipsoid::local2global_matrix(const double m[3][3], const double *quat, double global_m[3][3]){
+    double rot[3][3],  temp[3][3];
+    MathExtra::quat_to_mat(const_cast<double*>(quat), rot);
+    MathExtra::times3(rot, m, temp);
+    MathExtra::transpose_times3(rot, temp, global_m);
+};
+
+  
+/* ----------------------------------------------------------------------
+   express global (system level) to local (particle level) coordinates
+------------------------------------------------------------------------- */
+
+void PairGranHookeHistoryEllipsoid::global2local_vector(const double *v, const double *quat, double *local_v){
+
+    double qc[4];
+    MathExtra::qconjugate(const_cast<double*>(quat), qc);
+    MathExtra::quatrotvec(qc, const_cast<double*>(v), local_v);
+
+};
+
+
+void PairGranHookeHistoryEllipsoid::global2local_matrix(const double m[3][3], const double *quat, double local_m[3][3]){
+    double rot[3][3], temp[3][3];
+    MathExtra::quat_to_mat(quat, rot);
+    MathExtra::transpose_times3(rot, m, temp);
+    MathExtra::times3(temp, rot, local_m);
+}
+
+/* ----------------------------------------------------------------------
+   shape function computations for superellipsoids
+------------------------------------------------------------------------- */
+
+void PairGranHookeHistoryEllipsoid::shape_function_local(const double *shape, const double *block, const double *quat, const double *point, double local_f){
+  const double n1 = block[0], n2 = block[1];
+  
+  local_f = pow( pow(abs(point[0]/shape[0]), n2) + pow(abs(point[1]/shape[1]), n2) , n1/ n2) + pow(abs(point[2]/shape[2]), n1)  - 1.0;
+};
+
+void PairGranHookeHistoryEllipsoid::shape_function_global(const double *shape, const double *block, const double *quat, const double *point, double global_f){
+  double local_point[3];
+  global2local_vector(const_cast<double*>(point), const_cast<double*>(quat), local_point);
+  shape_function_local(shape, block, quat, local_point, global_f);
+};
+
+void PairGranHookeHistoryEllipsoid::shape_function_local_grad(const double *shape, const double *block, const double *quat, const double *point, double *local_grad){
+  const double n1 = block[0], n2 = block[1];
+  const double ainv = 1.0 / shape[0];
+  const double binv = 1.0 / shape[1];
+  const double cinv = 1.0 / shape[2];
+
+  const double nu = pow(abs(point[0] * ainv), n2) + pow(abs(point[1] * binv), n2);
+  const double nu_12 = pow(nu, n1 / n2 - 1.0);
+
+  local_grad[0] = n1*ainv * pow(abs(point[0] * ainv), n2 - 1.0) * nu_12 * copysign(1.0, point[0]);
+  local_grad[1] = n1*binv * pow(abs(point[1] * binv), n2 - 1.0) * nu_12 * copysign(1.0, point[1]);
+  local_grad[2] = n1*cinv * pow(abs(point[2] * cinv), n1 - 1.0) * copysign(1.0, point[2]);
+
+};
+
+void PairGranHookeHistoryEllipsoid::shape_function_local_hessian(
+  const double *shape, const double *block, const double *quat, const double *point, double local_hess[3][3]) {
+  const double n1 = block[0], n2 = block[1];
+  const double ainv = 1.0 / shape[0];
+  const double binv = 1.0 / shape[1];
+  const double cinv = 1.0 / shape[2];
+
+  const double nu = pow(abs(point[0] * ainv), n2) + pow(abs(point[1] * binv), n2);
+  const double nu_12_1 = pow(nu, n1 / n2 - 1.0);
+  const double nu_12_2 = pow(nu, n1 / n2 - 2.0);
+
+  local_hess[0][2] = local_hess[2][0] = local_hess[1][2] = local_hess[2][1] =0;
+
+  local_hess[0][0] = n1 * (n2 - 1) * ainv * ainv * pow(abs(point[0] * ainv), n2 - 2.0)* nu_12_1 +
+                     n1 * (n1 - n2) * ainv * ainv * pow(abs(point[0] * ainv), 2*n2 - 2.0)* nu_12_2;
+
+  local_hess[1][1] = n1 * (n2 - 1) * binv * binv * pow(abs(point[1] * binv), n2 - 2.0)* nu_12_1 +
+                     n1 * (n1 - n2) * ainv * ainv * pow(abs(point[1] * binv), 2*n2 - 2.0)* nu_12_2;
+
+  local_hess[2][2] = n1 * (n1 - 1) * cinv * cinv * pow(abs(point[2] * cinv), n1-2);
+
+  local_hess[0][1] = n1 * (n1 - n2) * ainv * binv * pow(abs(point[0]*ainv), n2 - 1) *
+                     pow(abs(point[1]*binv), n2 -1) * pow(nu, n1 / n2 - 2) * copysign(1.0, shape[0] * shape[1]); 
+                
+  }

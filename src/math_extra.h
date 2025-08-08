@@ -88,7 +88,7 @@ inline void multiply_shape_shape(const double *one, const double *two, double *a
 // quaternion operations
 
 inline void qnormalize(double *q);
-inline void qconjugate(double *q, double *qc);
+inline void qconjugate(double *q, double *qc); // would it be better to have q passed as const double?
 inline void vecquat(double *a, double *b, double *c);
 inline void quatvec(double *a, double *b, double *c);
 inline void quatquat(double *a, double *b, double *c);

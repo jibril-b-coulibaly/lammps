@@ -13,21 +13,21 @@
 
 #ifdef PAIR_CLASS
 // clang-format off
-PairStyle(gran/hooke/history,PairGranHookeHistory);
+PairStyle(gran/hooke/history/ellipsoid,PairGranHookeHistory);
 // clang-format on
 #else
 
-#ifndef LMP_PAIR_GRAN_HOOKE_HISTORY_H
-#define LMP_PAIR_GRAN_HOOKE_HISTORY_H
+#ifndef LMP_PAIR_GRAN_HOOKE_HISTORY_ELLIPSOID_H
+#define LMP_PAIR_GRAN_HOOKE_HISTORY_ELLIPSOID_H
 
 #include "pair.h"
 
 namespace LAMMPS_NS {
 
-class PairGranHookeHistory : public Pair {
+class PairGranHookeHistoryEllipsoid : public Pair {
  public:
-  PairGranHookeHistory(class LAMMPS *);
-  ~PairGranHookeHistory() override;
+  PairGranHookeHistoryEllipsoid(class LAMMPS *);
+  ~PairGranHookeHistoryEllipsoid() override;
   void compute(int, int) override;
   void settings(int, char **) override;
   void coeff(int, char **) override;
@@ -44,6 +44,18 @@ class PairGranHookeHistory : public Pair {
   double memory_usage() override;
   double atom2cut(int) override;
   double radii2cut(double, double) override;
+
+  // needed for shape functions grad and matrix 
+  void local2global_vector(const double v[3], const double *quat, double global_v[3]);
+  void global2local_vector(const double v[3], const double *quat, double local_v[3]);
+  void local2global_matrix(const double m[3][3], const double *quat, double global_m[3][3]);
+  void global2local_matrix(const double m[3][3], const double *quat, double local_m[3][3]);
+
+  // shape function computations
+  void shape_function_local(const double *shape, const double *block, const double *quat, const double *point, double local_f);
+  void shape_function_global(const double *shape, const double *block, const double *quat, const double *point, double global_f);
+  void shape_function_local_grad(const double *shape, const double *block, const double *quat, const double *point, double *local_grad);
+  void shape_function_local_hessian(const double *shape, const double *block, const double *quat, const double *point, double local_hessian[3][3]);
 
  protected:
   double kn, kt, gamman, gammat, xmu;
