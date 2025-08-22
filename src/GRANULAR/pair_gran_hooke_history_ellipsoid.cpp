@@ -68,7 +68,7 @@ PairGranHookeHistoryEllipsoid::PairGranHookeHistoryEllipsoid(LAMMPS *lmp) : Pair
 
   fix_history = nullptr;
   fix_dummy = dynamic_cast<FixDummy *>(
-      modify->add_fix("NEIGH_HISTORY_HH_DUMMY" + std::to_string(instance_me) + " all DUMMY"));
+      modify->add_fix("NEIGH_HISTORY_HH_ELL_DUMMY" + std::to_string(instance_me) + " all DUMMY"));
 }
 
 /* ---------------------------------------------------------------------- */
@@ -80,9 +80,9 @@ PairGranHookeHistoryEllipsoid::~PairGranHookeHistoryEllipsoid()
   delete[] svector;
 
   if (!fix_history)
-    modify->delete_fix("NEIGH_HISTORY_HH_DUMMY" + std::to_string(instance_me));
+    modify->delete_fix("NEIGH_HISTORY_HH_ELL_DUMMY" + std::to_string(instance_me));
   else
-    modify->delete_fix("NEIGH_HISTORY_HH" + std::to_string(instance_me));
+    modify->delete_fix("NEIGH_HISTORY_HH_ELL" + std::to_string(instance_me));
 
   if (allocated) {
     memory->destroy(setflag);
@@ -455,9 +455,9 @@ void PairGranHookeHistoryEllipsoid::init_style()
   // this is so its order in the fix list is preserved
 
   if (history && (fix_history == nullptr)) {
-    auto cmd = fmt::format("NEIGH_HISTORY_HH{} all NEIGH_HISTORY {}", instance_me, size_history);
+    auto cmd = fmt::format("NEIGH_HISTORY_HH_ELL{} all NEIGH_HISTORY {}", instance_me, size_history);
     fix_history = dynamic_cast<FixNeighHistory *>(
-        modify->replace_fix("NEIGH_HISTORY_HH_DUMMY" + std::to_string(instance_me), cmd, 1));
+        modify->replace_fix("NEIGH_HISTORY_HH_ELL_DUMMY" + std::to_string(instance_me), cmd, 1));
     fix_history->pair = this;
   }
 
@@ -527,7 +527,7 @@ void PairGranHookeHistoryEllipsoid::init_style()
 
   if (history) {
     fix_history = dynamic_cast<FixNeighHistory *>(
-        modify->get_fix_by_id("NEIGH_HISTORY_HH" + std::to_string(instance_me)));
+        modify->get_fix_by_id("NEIGH_HISTORY_HH_ELL" + std::to_string(instance_me)));
     if (!fix_history) error->all(FLERR, "Could not find pair fix neigh history ID");
   }
 }

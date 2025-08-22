@@ -13,7 +13,7 @@
 
 #ifdef PAIR_CLASS
 // clang-format off
-PairStyle(gran/hooke/history/ellipsoid,PairGranHookeHistory);
+PairStyle(gran/hooke/history/ellipsoid,PairGranHookeHistoryEllipsoid);
 // clang-format on
 #else
 
