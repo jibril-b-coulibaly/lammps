@@ -11,9 +11,6 @@
    See the README file in the top-level LAMMPS directory.
 ------------------------------------------------------------------------- */
 
-/* ----------------------------------------------------------------------
-   Contributing authors: Leo Silbert (SNL), Gary Grest (SNL)
-------------------------------------------------------------------------- */
 
 #include "pair_gran_hooke_history_ellipsoid.h"
 
@@ -35,6 +32,26 @@
 #include <cstring>
 
 using namespace LAMMPS_NS;
+
+// TODO: This is temporary to check if it LAPACK / linalg works
+//       Pick the ones we end up using and clean that up
+//    LAPACK doc: https://netlib.org/lapack/lug/node38.html
+// WARNING: FORTRAN uses pass by reference semantics so must use pointer arguments in C++
+
+extern "C" { // General Matrices
+    void dgetrf_(const int *m, const int *n, double *a, const int *lda, int *ipiv, int *info); // Factorize
+    void dgetrs_(const char *trans, const int *n, const int *nrhs, double *a, const int *lda, int *ipiv, double *b, const int *ldb, int *info); // Solve (using factorzation)
+}
+
+extern "C" { // Symmetric positive definite (regular storage, i.e., not packed)
+    void dpotrf_(const char *uplo, const int *n, double *a, const int *lda, int *info); // Factorize
+    void dpotrs_(const char *uplo, const int *n, const int *nrhs, double *a, const int *lda, double *b, const int *ldb, int *info); // Solve (using factorization)
+}
+
+extern "C" { // Symmetric indefinite (regular storage, i.e., not packed)
+    void dsytrf_(const char *uplo, const int *n, double *a, const int *lda, int *ipiv, double *work, const int *lwork, int *info); // Factorize
+    void dsytrs_(const char *uplo, const int *n, const int *nrhs, double *a, const int *lda, int *ipiv, double *b, const int *ldb, int *info); // Solve (using factorization)
+}
 
 /* ---------------------------------------------------------------------- */
 
@@ -69,6 +86,43 @@ PairGranHookeHistoryEllipsoid::PairGranHookeHistoryEllipsoid(LAMMPS *lmp) : Pair
   fix_history = nullptr;
   fix_dummy = dynamic_cast<FixDummy *>(
       modify->add_fix("NEIGH_HISTORY_HH_ELL_DUMMY" + std::to_string(instance_me) + " all DUMMY"));
+
+  // TEMP TEST HERE IN THE CONSTRUCTOR FOR AVAILABILITY AND FUNCTIONALITY OF LAPACK FUNCTIONS
+  // WARNING: 1D column-major matrix for LAPACK compatibility
+  static constexpr int n = 4;
+  // General: (solution = {-1, 1, 2, 0})
+  double A[n][n] = {{2 , -9, 9 , -1},
+                    {-4, -8, -8, -5},
+                    {6 , -2, -1, -2},
+                    {8 , -6, -2, -2}};
+  double rhs[n] = {7, -20, -10, -18};
+  double A_LAPACK[n * n];
+  for (int i = 0 ; i < n ; i++){
+    for (int j = 0 ; j < n ; j++){
+      A_LAPACK[i + j*n] = A[i][j];
+    }
+  }
+  int lapack_error;
+  int ipiv[n*n];
+  const char trans = 'N';
+  const int nrhs = 1;
+
+  dgetrf_(&n, &n, A_LAPACK, &n, ipiv, &lapack_error); // Factorize
+  if (lapack_error) {
+    error->all(FLERR, "LAPACK factorization error in ellipsoid code, info = {} ", lapack_error);
+  }
+  utils::logmesg(lmp," rhs before solve = ({}, {}, {}, {})\n", rhs[0], rhs[1], rhs[2], rhs[3]);
+  dgetrs_(&trans, &n, &nrhs, A_LAPACK, &n, ipiv, rhs, &n, &lapack_error); // Solve (using factorzation)
+  if (lapack_error) {
+    error->all(FLERR, "LAPACK solve error in ellipsoid code, info = {} ", lapack_error);
+  }
+  // Output results
+  utils::logmesg(lmp," LAPACK RESULTS: \n");
+  utils::logmesg(lmp," Expected vector = (-1, 1, 2, 0)\n");
+  utils::logmesg(lmp," rhs after solve = ({}, {}, {}, {})\n", rhs[0], rhs[1], rhs[2], rhs[3]);
+
+
+  
 }
 
 /* ---------------------------------------------------------------------- */
