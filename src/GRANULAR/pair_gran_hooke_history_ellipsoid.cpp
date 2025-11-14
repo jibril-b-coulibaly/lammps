@@ -227,8 +227,8 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
           // Continued contact: use grain true shape and last contact point
           MathExtra::copy3(bonus[ellipsoid[i]].shape, shapei);
           MathExtra::copy3(bonus[ellipsoid[j]].shape, shapej);
-          MathExtra::copy3(bonus[ellipsoid[j]].block, blocki);
-          MathExtra::copy3(bonus[ellipsoid[j]].block, shapej);
+          MathExtra::copy3(bonus[ellipsoid[i]].block, blocki);
+          MathExtra::copy3(bonus[ellipsoid[j]].block, blockj);
           // TODO: implement neigh history!
           // TODO: move contact point with rigid body motion of the pair ?
           //       not sure if enough information to do that
