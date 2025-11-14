@@ -15,6 +15,7 @@
 #include "pair_gran_hooke_history_ellipsoid.h"
 
 #include "atom.h"
+#include "atom_vec_ellipsoid.h"
 #include "comm.h"
 #include "error.h"
 #include "fix.h"
@@ -27,6 +28,7 @@
 #include "neighbor.h"
 #include "update.h"
 #include "math_extra.h" // probably needed for some computations
+#include "math_extra_superellipsoids.h"
 
 #include <cmath>
 #include <cstring>
@@ -62,7 +64,7 @@ PairGranHookeHistoryEllipsoid::PairGranHookeHistoryEllipsoid(LAMMPS *lmp) : Pair
   centroidstressflag = CENTROID_NOTAVAIL;
   finitecutflag = 1;
   history = 1;
-  size_history = 7;  // shear[3], prevevious_cp[3], pair_was_in_contact_flag
+  size_history = 6;  // shear[3], previous_cp[3]
 
   single_extra = 10;
   svector = new double[10];
@@ -166,7 +168,11 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
   double shrmag, rsht;
   int *ilist, *jlist, *numneigh, **firstneigh;
   int *touch, **firsttouch;
-  double *shear, *allshear, **firstshear;
+  double *shear, *allshear, **firstshear, *prev_cp; // added previous contact point placeholder
+
+  double shapex, shapey, shapez; // ellipsoid shape params
+  double quat1, quat2, quat3, quat4;
+  double block1, block2;
 
   ev_init(eflag, vflag);
 
@@ -202,6 +208,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
   double **torque = atom->torque;
   double *radius = atom->radius;
   double *rmass = atom->rmass;
+
   int *mask = atom->mask;
   int nlocal = atom->nlocal;
   int newton_pair = force->newton_pair;
@@ -222,6 +229,8 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
     ytmp = x[i][1];
     ztmp = x[i][2];
     radi = radius[i];
+
+
     touch = firsttouch[i];
     allshear = firstshear[i];
     jlist = firstneigh[i];
@@ -233,6 +242,27 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
       j &= NEIGHMASK;
 
       if (factor_lj == 0) continue;
+
+      // if intersected at previous point in time, no need to check bounding sphere
+      if (touch[jj] == 1) continue;
+      else {
+        // check intersection of bounding spheres (radius stores bounding sphere for ellipsoids)
+        delx = xtmp - x[j][0];
+        dely = ytmp - x[j][1];
+        delz = ztmp - x[j][2];
+        rsq = delx * delx + dely * dely + delz * delz;
+        radj = radius[j];
+        radsum = radi + radj; 
+        if (rsq >= radsum * radsum) 
+        {
+          touch[jj] = 0;
+          shear = &allshear[3 * jj];
+          shear[0] = 0.0;
+          shear[1] = 0.0;
+          shear[2] = 0.0;
+        }
+        else touch[jj] = 1; 
+      }
 
       delx = xtmp - x[j][0];
       dely = ytmp - x[j][1];
@@ -885,97 +915,3 @@ double PairGranHookeHistoryEllipsoid::radii2cut(double r1, double r2)
   return cut;
 }
 
-
-/* ----------------------------------------------------------------------
-   express local (particle level) to global (system level) coordinates
-------------------------------------------------------------------------- */
-
-void PairGranHookeHistoryEllipsoid::local2global_vector(const double v[3], const double *quat, double global_v[3]){
-
-   MathExtra::quatrotvec(const_cast<double*>(quat) , const_cast<double*>(v), global_v);
-};
-
-void PairGranHookeHistoryEllipsoid::local2global_matrix(const double m[3][3], const double *quat, double global_m[3][3]){
-    double rot[3][3],  temp[3][3];
-    MathExtra::quat_to_mat(const_cast<double*>(quat), rot);
-    MathExtra::times3(rot, m, temp);
-    MathExtra::transpose_times3(rot, temp, global_m);
-};
-
-  
-/* ----------------------------------------------------------------------
-   express global (system level) to local (particle level) coordinates
-------------------------------------------------------------------------- */
-
-void PairGranHookeHistoryEllipsoid::global2local_vector(const double *v, const double *quat, double *local_v){
-
-    double qc[4];
-    MathExtra::qconjugate(const_cast<double*>(quat), qc);
-    MathExtra::quatrotvec(qc, const_cast<double*>(v), local_v);
-
-};
-
-
-void PairGranHookeHistoryEllipsoid::global2local_matrix(const double m[3][3], const double *quat, double local_m[3][3]){
-    double rot[3][3], temp[3][3];
-    MathExtra::quat_to_mat(quat, rot);
-    MathExtra::transpose_times3(rot, m, temp);
-    MathExtra::times3(temp, rot, local_m);
-}
-
-/* ----------------------------------------------------------------------
-   shape function computations for superellipsoids
-------------------------------------------------------------------------- */
-
-void PairGranHookeHistoryEllipsoid::shape_function_local(const double *shape, const double *block, const double *quat, const double *point, double local_f){
-  const double n1 = block[0], n2 = block[1];
-  
-  local_f = pow( pow(abs(point[0]/shape[0]), n2) + pow(abs(point[1]/shape[1]), n2) , n1/ n2) + pow(abs(point[2]/shape[2]), n1)  - 1.0;
-};
-
-void PairGranHookeHistoryEllipsoid::shape_function_global(const double *shape, const double *block, const double *quat, const double *point, double global_f){
-  double local_point[3];
-  global2local_vector(const_cast<double*>(point), const_cast<double*>(quat), local_point);
-  shape_function_local(shape, block, quat, local_point, global_f);
-};
-
-void PairGranHookeHistoryEllipsoid::shape_function_local_grad(const double *shape, const double *block, const double *quat, const double *point, double *local_grad){
-  const double n1 = block[0], n2 = block[1];
-  const double ainv = 1.0 / shape[0];
-  const double binv = 1.0 / shape[1];
-  const double cinv = 1.0 / shape[2];
-
-  const double nu = pow(abs(point[0] * ainv), n2) + pow(abs(point[1] * binv), n2);
-  const double nu_12 = pow(nu, n1 / n2 - 1.0);
-
-  local_grad[0] = n1*ainv * pow(abs(point[0] * ainv), n2 - 1.0) * nu_12 * copysign(1.0, point[0]);
-  local_grad[1] = n1*binv * pow(abs(point[1] * binv), n2 - 1.0) * nu_12 * copysign(1.0, point[1]);
-  local_grad[2] = n1*cinv * pow(abs(point[2] * cinv), n1 - 1.0) * copysign(1.0, point[2]);
-
-};
-
-void PairGranHookeHistoryEllipsoid::shape_function_local_hessian(
-  const double *shape, const double *block, const double *quat, const double *point, double local_hess[3][3]) {
-  const double n1 = block[0], n2 = block[1];
-  const double ainv = 1.0 / shape[0];
-  const double binv = 1.0 / shape[1];
-  const double cinv = 1.0 / shape[2];
-
-  const double nu = pow(abs(point[0] * ainv), n2) + pow(abs(point[1] * binv), n2);
-  const double nu_12_1 = pow(nu, n1 / n2 - 1.0);
-  const double nu_12_2 = pow(nu, n1 / n2 - 2.0);
-
-  local_hess[0][2] = local_hess[2][0] = local_hess[1][2] = local_hess[2][1] =0;
-
-  local_hess[0][0] = n1 * (n2 - 1) * ainv * ainv * pow(abs(point[0] * ainv), n2 - 2.0)* nu_12_1 +
-                     n1 * (n1 - n2) * ainv * ainv * pow(abs(point[0] * ainv), 2*n2 - 2.0)* nu_12_2;
-
-  local_hess[1][1] = n1 * (n2 - 1) * binv * binv * pow(abs(point[1] * binv), n2 - 2.0)* nu_12_1 +
-                     n1 * (n1 - n2) * ainv * ainv * pow(abs(point[1] * binv), 2*n2 - 2.0)* nu_12_2;
-
-  local_hess[2][2] = n1 * (n1 - 1) * cinv * cinv * pow(abs(point[2] * cinv), n1-2);
-
-  local_hess[0][1] = n1 * (n1 - n2) * ainv * binv * pow(abs(point[0]*ainv), n2 - 1) *
-                     pow(abs(point[1]*binv), n2 -1) * pow(nu, n1 / n2 - 2) * copysign(1.0, shape[0] * shape[1]); 
-                
-  }

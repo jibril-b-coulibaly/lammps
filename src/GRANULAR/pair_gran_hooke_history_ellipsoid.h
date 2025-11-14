@@ -45,18 +45,6 @@ class PairGranHookeHistoryEllipsoid : public Pair {
   double atom2cut(int) override;
   double radii2cut(double, double) override;
 
-  // needed for shape functions grad and matrix 
-  void local2global_vector(const double v[3], const double *quat, double global_v[3]);
-  void global2local_vector(const double v[3], const double *quat, double local_v[3]);
-  void local2global_matrix(const double m[3][3], const double *quat, double global_m[3][3]);
-  void global2local_matrix(const double m[3][3], const double *quat, double local_m[3][3]);
-
-  // shape function computations
-  void shape_function_local(const double *shape, const double *block, const double *quat, const double *point, double local_f);
-  void shape_function_global(const double *shape, const double *block, const double *quat, const double *point, double global_f);
-  void shape_function_local_grad(const double *shape, const double *block, const double *quat, const double *point, double *local_grad);
-  void shape_function_local_hessian(const double *shape, const double *block, const double *quat, const double *point, double local_hessian[3][3]);
-
  protected:
   double kn, kt, gamman, gammat, xmu;
   int dampflag;
