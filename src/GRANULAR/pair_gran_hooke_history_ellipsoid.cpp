@@ -35,6 +35,12 @@
 
 using namespace LAMMPS_NS;
 
+static constexpr int ITERMAX_NEWTON = 100;
+static constexpr double CONVERGENCE_NEWTON = 1e-6;
+static constexpr int ITERMAX_LINESEARCH = 10;
+static constexpr double PARAMETER_LINESEARCH = 1e-4;
+static constexpr double CUTBACK_LINESEARCH = 0.5;
+static constexpr int NUMSTEP_INITIAL_GUESS = 8;
 
 extern "C" { // General Matrices
     void dgetrf_(const int *m, const int *n, double *a, const int *lda, int *ipiv, int *info); // Factorize
@@ -124,6 +130,8 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
   double quat1, quat2, quat3, quat4;
   double block1, block2;
 
+  double X0[4], shapei[3], blocki[3], shapej[3], blockj[3], Ri[3][3], Rj[3][3];
+
   ev_init(eflag, vflag);
 
   int shearupdate = 1;
@@ -163,6 +171,9 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
   int nlocal = atom->nlocal;
   int newton_pair = force->newton_pair;
   double *special_lj = force->special_lj;
+  auto avec_ellipsoid = dynamic_cast<AtomVecEllipsoid *>(atom->style_match("ellipsoid"));
+  AtomVecEllipsoid::Bonus *bonus = avec_ellipsoid->bonus;
+  int *ellipsoid = atom->ellipsoid;
 
   inum = list->inum;
   ilist = list->ilist;
@@ -193,27 +204,6 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
 
       if (factor_lj == 0) continue;
 
-      // if intersected at previous point in time, no need to check bounding sphere
-      if (touch[jj] == 1) continue;
-      else {
-        // check intersection of bounding spheres (radius stores bounding sphere for ellipsoids)
-        delx = xtmp - x[j][0];
-        dely = ytmp - x[j][1];
-        delz = ztmp - x[j][2];
-        rsq = delx * delx + dely * dely + delz * delz;
-        radj = radius[j];
-        radsum = radi + radj; 
-        if (rsq >= radsum * radsum) 
-        {
-          touch[jj] = 0;
-          shear = &allshear[3 * jj];
-          shear[0] = 0.0;
-          shear[1] = 0.0;
-          shear[2] = 0.0;
-        }
-        else touch[jj] = 1; 
-      }
-
       delx = xtmp - x[j][0];
       dely = ytmp - x[j][1];
       delz = ztmp - x[j][2];
@@ -221,8 +211,59 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
       radj = radius[j];
       radsum = radi + radj;
 
+      bool touching;
       if (rsq >= radsum * radsum) {
+        touching = false;
+      // TODO: consider implementing a bounding-box check for hierchical detection
+      //       Could be useful for high aspect ratio grain.
+      //       Maybe make it an option, since it could be slower for low aspect ratio grains
+      } else {
+        // Super-ellipsoid contact detection between atoms i and j
+        MathExtra::quat_to_mat(bonus[ellipsoid[i]].quat, Ri);
+        // TODO: Not sure if j is accessible if ghost, radius is, so bonus props must have been communicated on ghost atoms I think
+        MathExtra::quat_to_mat(bonus[ellipsoid[j]].quat, Rj);
 
+        if (touch[jj] == 1) {
+          // Continued contact: use grain true shape and last contact point
+          MathExtra::copy3(bonus[ellipsoid[i]].shape, shapei);
+          MathExtra::copy3(bonus[ellipsoid[j]].shape, shapej);
+          MathExtra::copy3(bonus[ellipsoid[j]].block, blocki);
+          MathExtra::copy3(bonus[ellipsoid[j]].block, shapej);
+          // TODO: implement neigh history!
+          // TODO: move contact point with rigid body motion of the pair ?
+          //       not sure if enough information to do that
+          MathExtra::copy3(prev_cp, X0);
+          int status = determine_contact_point(x[i], Ri, shapei, blocki, x[j], Rj, shapej, blockj, X0);
+          if (status == 0)
+            touching = true;
+          else if(status == 5)
+            touching = false;
+          else
+            error->all(FLERR, "Ellipsoid contact detection failed with status {} ", status);
+        } else {
+          // New contact: Build initial guess incrementally
+          MathExtra::scaleadd3(radj / radsum, x[i], radi /radsum, x[j], X0);
+          X0[3] = 0.0; // Lagrange multiplier mu^2 initially zero
+          for (int iter_ig = 1 ; iter_ig <= NUMSTEP_INITIAL_GUESS ; iter_ig++) {
+            double frac = iter_ig / double(NUMSTEP_INITIAL_GUESS);
+            double shapei[3] = {1.0, 1.0, 1.0};
+            double shapej[3] = {1.0, 1.0, 1.0};
+            MathExtra::scaleadd3(1.0-frac, shapei, frac, bonus[ellipsoid[i]].shape, shapei);
+            MathExtra::scaleadd3(1.0-frac, shapej, frac, bonus[ellipsoid[j]].shape, shapej);
+            double blocki[2] = {2.0 + frac * (bonus[ellipsoid[i]].block[0] - 2.0), 2.0 + frac * (bonus[ellipsoid[i]].block[1] - 2.0)};
+            double blockj[2] = {2.0 + frac * (bonus[ellipsoid[j]].block[0] - 2.0), 2.0 + frac * (bonus[ellipsoid[j]].block[1] - 2.0)};
+            int status = determine_contact_point(x[i], Ri, shapei, blocki, x[j], Rj, shapej, blockj, X0);
+            if (status == 0)
+              touching = true;
+            else if(status == 5)
+              touching = false;
+            else
+              error->all(FLERR, "Ellipsoid contact detection failed with status {} ", status);
+          }
+        }
+      }
+
+      if (!touching) {
         // unset non-touching neighbors
 
         touch[jj] = 0;
@@ -230,8 +271,12 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         shear[0] = 0.0;
         shear[1] = 0.0;
         shear[2] = 0.0;
-
       } else {
+        // TODO: Compute the force between the 2 superquadrics
+        MathExtra::copy3(X0, prev_cp);
+
+        // TODO: Everything below must be changed
+
         r = sqrt(rsq);
         rinv = 1.0 / r;
         rsqinv = 1.0 / rsq;
@@ -865,3 +910,195 @@ double PairGranHookeHistoryEllipsoid::radii2cut(double r1, double r2)
   return cut;
 }
 
+
+// High performance versions
+// TODO: this creates a fair bit of code duplication
+//       but avoids recomputing some of the expensive pow(), etc that would come with creating 3 functions:
+//       compute_shape(), compute_gradient, compute_jacobian.
+//       not sure how to best do this without creating many small help functions
+//       Pushing that logic, the calculation of a_inv, etc is not necessary. could define shapeinv
+void PairGranHookeHistoryEllipsoid::derivatives_local(const double* xlocal, const double* shape, const double* block, double* grad, double hess[3][3]) {
+  double a_inv = 1.0 / shape[0];
+  double b_inv = 1.0 / shape[1];
+  double c_inv = 1.0 / shape[2];
+  double x_a = xlocal[0] * a_inv;
+  double y_b = xlocal[1] * b_inv;
+  double z_c = xlocal[2] * c_inv;
+  double n1 = block[0];
+  double n2 = block[1];
+  // Consider simplifying with flag_super
+  double x_a_pow_n2_m2 = std::pow(std::abs(x_a), n2 - 2.0);
+  double x_a_pow_n2_m1 = x_a_pow_n2_m2 * x_a;
+  double y_b_pow_n2_m2 = std::pow(std::abs(y_b), n2 - 2.0);
+  double y_b_pow_n2_m1 = y_b_pow_n2_m2 * y_b;
+
+  double nu = (x_a_pow_n2_m1 * x_a) + (y_b_pow_n2_m1 * y_b);
+  double nu_pow_n1_n2_m2 = std::pow(nu, n1/n2 - 2.0);
+  double nu_pow_n1_n2_m1 = nu_pow_n1_n2_m1 * nu;
+
+  double z_c_pow_n1_m2 = std::pow(std::abs(z_c), n1 -2.0);
+
+  // Equation (14)
+  double signx = xlocal[0] > 0.0 ? 1.0 : -1.0;
+  double signy = xlocal[1] > 0.0 ? 1.0 : -1.0;
+  double signz = xlocal[2] > 0.0 ? 1.0 : -1.0;
+  grad[0] = n1 * a_inv * x_a_pow_n2_m1 * nu_pow_n1_n2_m1 * signx;
+  grad[1] = n1 * b_inv * y_b_pow_n2_m1 * nu_pow_n1_n2_m1 * signy;
+  grad[2] = n1 * c_inv * (z_c_pow_n1_m2 * z_c) * signz;
+
+  // Equation (15)
+  double signxy = signx * signy;
+  hess[0][0] = a_inv * a_inv * (n1 * (n2 - 1.0) * x_a_pow_n2_m2 * nu_pow_n1_n2_m1 +
+                                (n1 - n2) * n1 * (x_a_pow_n2_m1 * x_a_pow_n2_m1) * nu_pow_n1_n2_m2);
+  hess[1][1] = b_inv * b_inv * (n1 * (n2 - 1.0) * y_b_pow_n2_m2 * nu_pow_n1_n2_m1 +
+                                (n1 - n2) * n1 * (y_b_pow_n2_m1 * y_b_pow_n2_m1) * nu_pow_n1_n2_m2);
+  hess[0][1] = hess[1][0] = a_inv * b_inv * (n1 - n2) * n1 * x_a_pow_n2_m1 * y_b_pow_n2_m1 * nu_pow_n1_n2_m2 * signxy;
+  hess[2][2] = c_inv * c_inv * n1 * (n1 - 1.0) * z_c_pow_n1_m2;
+  hess[0][2] = hess[2][0] = hess[1][2] = hess[2][1] = 0.0;
+}
+
+// High performance version
+double PairGranHookeHistoryEllipsoid::shape_and_gradient_local(const double* xlocal, const double* shape, const double* block, double* grad) {
+  double a_inv = 1.0 / shape[0];
+  double b_inv = 1.0 / shape[1];
+  double c_inv = 1.0 / shape[2];
+  double x_a = xlocal[0] * a_inv;
+  double y_b = xlocal[1] * b_inv;
+  double z_c = xlocal[2] * c_inv;
+  double n1 = block[0];
+  double n2 = block[1];
+  // Consider simplifying with flag_super
+  double x_a_pow_n2_m1 = std::pow(std::abs(x_a), n2 - 1.0);
+  double y_b_pow_n2_m1 = std::pow(std::abs(y_b), n2 - 1.0);
+
+  double nu = (x_a_pow_n2_m1 * x_a) + (y_b_pow_n2_m1 * y_b);
+  double nu_pow_n1_n2_m1 = std::pow(nu, n1/n2 - 1.0);
+
+  double z_c_pow_n1_m1 = std::pow(std::abs(z_c), n1 - 1.0);
+
+  // Equation (14)
+  double signx = xlocal[0] > 0.0 ? 1.0 : -1.0;
+  double signy = xlocal[1] > 0.0 ? 1.0 : -1.0;
+  double signz = xlocal[2] > 0.0 ? 1.0 : -1.0;
+  grad[0] = n1 * a_inv * x_a_pow_n2_m1 * nu_pow_n1_n2_m1 * signx;
+  grad[1] = n1 * b_inv * y_b_pow_n2_m1 * nu_pow_n1_n2_m1 * signy;
+  grad[2] = n1 * c_inv * z_c_pow_n1_m1 * signz;
+
+  return (nu_pow_n1_n2_m1 * nu) + (z_c_pow_n1_m1 * z_c) - 1.0;
+}
+
+double PairGranHookeHistoryEllipsoid::compute_residual(double* xci, double Ri[3][3], double* shapei, double* blocki,
+                                                       double* xcj, double Rj[3][3], double* shapej, double* blockj,
+                                                       double* X, double* shapefunc, double* residual) {
+  double tmp[3];
+  double xi_local[3], xj_local[3];
+  double gradi[3], gradj[3];
+
+  MathExtra::sub3(X, xci, tmp);
+  MathExtra::transpose_matvec(Ri, tmp, xi_local);
+  shapefunc[0] = shape_and_gradient_local(xi_local, shapei, blocki, tmp);
+  MathExtra::matvec(Ri, tmp, gradi);
+
+  MathExtra::sub3(X, xcj, tmp);
+  MathExtra::transpose_matvec(Rj, tmp, xj_local);
+  shapefunc[1] = shape_and_gradient_local(xj_local, shapej, blockj, tmp);
+  MathExtra::matvec(Rj, tmp, gradj);
+
+  // Equation (23)
+  MathExtra::scaleadd3(X[3], gradj, gradi, residual);
+  residual[3] = shapefunc[0] - shapefunc[1];
+  return residual[0]*residual[0] + residual[1]*residual[1] + residual[2]*residual[2] + residual[3]*residual[3];
+}
+
+void PairGranHookeHistoryEllipsoid::compute_jacobian(double* xci, double Ri[3][3], double* shapei, double* blocki,
+                                                     double* xcj, double Rj[3][3], double* shapej, double* blockj,
+                                                     double* X, double* jacobian) {
+  double tmp_v[3], tmp_m[3][3];
+  double xi_local[3], xj_local[3];
+  double gradi[3], hessi[3][3], gradj[3], hessj[3][3];
+
+  MathExtra::sub3(X, xci, tmp_v);
+  MathExtra::transpose_matvec(Ri, tmp_v, xi_local);
+  derivatives_local(xi_local, shapei, blocki, tmp_v, hessi);
+  MathExtra::matvec(Ri, tmp_v, gradi);
+  MathExtra::times3_transpose(hessi, Ri, tmp_m);
+  MathExtra::times3(Ri, tmp_m, hessi);
+
+  MathExtra::sub3(X, xcj, tmp_v);
+  MathExtra::transpose_matvec(Rj, tmp_v, xj_local);
+  derivatives_local(xj_local, shapej, blockj, tmp_v, hessj);
+  MathExtra::matvec(Rj, tmp_v, gradj);
+  MathExtra::times3_transpose(hessj, Rj, tmp_m);
+  MathExtra::times3(Rj, tmp_m, hessj);
+
+  // Jacobian (derivative of residual)
+  // 1D column-major matrix for LAPACK/linalg compatibility
+  for (int row = 0 ; row < 3 ; row++) {
+    for (int col = 0 ; col < 3 ; col++) {
+      jacobian[row + col*4] = hessi[row][col] + X[3] * hessj[row][col];
+    }
+    jacobian[row + 3*4] = gradj[row];
+  }
+  for (int col = 0 ; col < 3 ; col++) {
+    jacobian[3 + col*4] = gradi[col] - gradj[col];
+  }
+  jacobian[15] = 0.0;
+}
+
+
+int PairGranHookeHistoryEllipsoid::determine_contact_point(double* xci, double Ri[3][3], double* shapei, double* blocki,
+                                                            double* xcj, double Rj[3][3], double* shapej, double* blockj,
+                                                            double* X0) {
+  double norm, norm_ini, shapefunc[2], residual[4], jacobian[16];
+  bool converged(false);
+  norm = compute_residual(xci, Ri, shapei, blocki, xcj, Rj, shapej, blockj, X0, shapefunc, residual);
+  for (int iter = 0 ; iter < ITERMAX_NEWTON ; iter++) {
+    norm_ini = norm;
+    compute_jacobian(xci, Ri, shapei, blocki, xcj, Rj, shapej, blockj, X0, jacobian);
+
+    // Solve Newton step
+    int lapack_error, ipiv[16];
+    const int n = 4;
+    const char trans = 'N';
+    const int nrhs = 1;
+    double rhs[4] = {-residual[0], -residual[1], -residual[2], -residual[3]};
+    dgetrf_(&n, &n, jacobian, &n, ipiv, &lapack_error);
+    if (lapack_error)
+      return lapack_error;
+    dgetrs_(&trans, &n, &nrhs, jacobian, &n, ipiv, rhs, &n, &lapack_error);
+    if (lapack_error)
+      return lapack_error;
+
+    // Backtracking line search
+    double a(1.0), X_line[4];
+    for (int iter_ls = 0 ; iter_ls < ITERMAX_LINESEARCH ; iter_ls++) {
+      X_line[0] = X0[0] + a * rhs[0];
+      X_line[1] = X0[1] + a * rhs[1];
+      X_line[2] = X0[2] + a * rhs[2];
+      X_line[3] = X0[3] + a * rhs[3];
+
+      norm = compute_residual(xci, Ri, shapei, blocki, xcj, Rj, shapej, blockj, X_line, shapefunc, residual);
+      if (norm < norm_ini - PARAMETER_LINESEARCH * a * norm_ini)
+        break; // Armijo - Goldstein condition
+      else
+        a *= CUTBACK_LINESEARCH;
+    }
+    X0[0] = X_line[0];
+    X0[1] = X_line[1];
+    X0[2] = X_line[2];
+    X0[3] = X_line[3];
+
+    if (norm < CONVERGENCE_NEWTON) {
+      converged = true;
+      break;
+    }
+  }
+
+  // LAPACK error are within [-4, 4], use 5 non-touching, -5 for non-converging
+  if (!converged)
+    return -5;
+  if (shapefunc[0] <= 0.0 && shapefunc[1] <= 0.0)
+    return 5;
+
+  return 0;
+}

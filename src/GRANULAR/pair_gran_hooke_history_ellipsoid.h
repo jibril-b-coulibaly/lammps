@@ -69,6 +69,15 @@ class PairGranHookeHistoryEllipsoid : public Pair {
   int nmax;                // allocated size of mass_rigid
 
   void allocate();
+
+ private:
+  static void derivatives_local(const double*, const double*, const double*, double*, double[3][3]); // High performance version
+  static double shape_and_gradient_local(const double*, const double*, const double*, double*); // High performance version
+  static double compute_residual(double*, double[3][3], double*, double*, double*, double[3][3], double*, double*, double*, double*, double*);
+  static void compute_jacobian(double*, double[3][3], double*, double*, double*, double[3][3], double*, double*, double*, double*);
+  static int determine_contact_point(double*, double[3][3], double*, double*, double*, double[3][3], double*, double*, double*);
+
+
 };
 
 }    // namespace LAMMPS_NS
