@@ -233,6 +233,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
           // TODO: move contact point with rigid body motion of the pair ?
           //       not sure if enough information to do that
           MathExtra::copy3(prev_cp, X0);
+          X0[3] = 0.0; // Lagrange multiplier mu^2 initially zero
           int status = determine_contact_point(x[i], Ri, shapei, blocki, x[j], Rj, shapej, blockj, X0);
           if (status == 0)
             touching = true;
@@ -243,8 +244,8 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         } else {
           // New contact: Build initial guess incrementally
           MathExtra::scaleadd3(radj / radsum, x[i], radi /radsum, x[j], X0);
-          X0[3] = 0.0; // Lagrange multiplier mu^2 initially zero
           for (int iter_ig = 1 ; iter_ig <= NUMSTEP_INITIAL_GUESS ; iter_ig++) {
+            X0[3] = 0.0; // Lagrange multiplier mu^2 initially zero
             double frac = iter_ig / double(NUMSTEP_INITIAL_GUESS);
             double shapei[3] = {1.0, 1.0, 1.0};
             double shapej[3] = {1.0, 1.0, 1.0};
@@ -1094,10 +1095,10 @@ int PairGranHookeHistoryEllipsoid::determine_contact_point(double* xci, double R
     }
   }
 
-  // LAPACK error are within [-4, 4], use 5 non-touching, -5 for non-converging
+  // LAPACK error are within [-4, 4], use 5 non-touching, -5 non-converging
   if (!converged)
     return -5;
-  if (shapefunc[0] <= 0.0 && shapefunc[1] <= 0.0)
+  if (shapefunc[0] > 0.0 || shapefunc[1] > 0.0)
     return 5;
 
   return 0;
