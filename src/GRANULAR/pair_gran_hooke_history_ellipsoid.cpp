@@ -252,12 +252,12 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
             MathExtra::scaleadd3(1.0-frac, shapei, frac, bonus[ellipsoid[i]].shape, shapei);
             MathExtra::scaleadd3(1.0-frac, shapej, frac, bonus[ellipsoid[j]].shape, shapej);
             if (bonus[ellipsoid[i]].flag_super) { // not a big time save
-              blocki[0] = 2.0 + frac * (bonus[ellipsoid[i]].blocki[0] - 2.0);
-              blocki[1] = 2.0 + frac * (bonus[ellipsoid[i]].blocki[1] - 2.0);
+              blocki[0] = 2.0 + frac * (bonus[ellipsoid[i]].block[0] - 2.0);
+              blocki[1] = 2.0 + frac * (bonus[ellipsoid[i]].block[1] - 2.0);
             }
             if (bonus[ellipsoid[j]].flag_super) {
-              blockj[0] = 2.0 + frac * (bonus[ellipsoid[j]].blocki[0] - 2.0);
-              blockj[1] = 2.0 + frac * (bonus[ellipsoid[j]].blocki[1] - 2.0);
+              blockj[0] = 2.0 + frac * (bonus[ellipsoid[j]].block[0] - 2.0);
+              blockj[1] = 2.0 + frac * (bonus[ellipsoid[j]].block[1] - 2.0);
             }
             int status = determine_contact_point(x[i], Ri, shapei, blocki, x[j], Rj, shapej, blockj, X0);
             if (status == 0)
