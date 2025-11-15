@@ -131,6 +131,8 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
   double block1, block2;
 
   double X0[4], shapei[3], blocki[3], shapej[3], blockj[3], Ri[3][3], Rj[3][3];
+  // TODO: Maybe we can make flag_super of the grain an int instead, to cimplify when n1 = n2 ?
+  int flagi, flagj; // 0 : ellipsoid, 1 : equal exponents n1=n2, 2: general super-ellipsoid n1 >2, n2>2, n1!=n2
 
   ev_init(eflag, vflag);
 
@@ -920,10 +922,8 @@ double PairGranHookeHistoryEllipsoid::radii2cut(double r1, double r2)
 
 // High performance versions
 // TODO: this creates a fair bit of code duplication
-//       but avoids recomputing some of the expensive pow(), etc that would come with creating 3 functions:
-//       compute_shape(), compute_gradient, compute_jacobian.
 //       not sure how to best do this without creating many small help functions
-//       Pushing that logic, the calculation of a_inv, etc is not necessary. could define shapeinv
+//       Pushing that logic, the calculation of a_inv, etc is not necessary. could define and store shapeinv
 void PairGranHookeHistoryEllipsoid::derivatives_local(const double* xlocal, const double* shape, const double* block, double* grad, double hess[3][3]) {
   double a_inv = 1.0 / shape[0];
   double b_inv = 1.0 / shape[1];
@@ -939,7 +939,7 @@ void PairGranHookeHistoryEllipsoid::derivatives_local(const double* xlocal, cons
   double y_b_pow_n2_m1 = y_b_pow_n2_m2 * y_b;
 
   double nu = (x_a_pow_n2_m1 * x_a) + (y_b_pow_n2_m1 * y_b);
-  double nu_pow_n1_n2_m2 = std::pow(nu, n1/n2 - 2.0); // TODO: if n1=n2, this should be zero, not 1/nu. Guard against this by making multiple cases
+  double nu_pow_n1_n2_m2 = std::pow(nu, n1/n2 - 2.0);
   double nu_pow_n1_n2_m1 = nu_pow_n1_n2_m1 * nu;
 
   double z_c_pow_n1_m2 = std::pow(z_c, n1 -2.0);
@@ -963,6 +963,72 @@ void PairGranHookeHistoryEllipsoid::derivatives_local(const double* xlocal, cons
   hess[0][2] = hess[2][0] = hess[1][2] = hess[2][1] = 0.0;
 }
 
+// Special case for n2 = n2 = n > 2
+void PairGranHookeHistoryEllipsoid::derivatives_local_equaln(const double* xlocal, const double* shape, const double n, double* grad, double hess[3][3]) {
+  double a_inv = 1.0 / shape[0];
+  double b_inv = 1.0 / shape[1];
+  double c_inv = 1.0 / shape[2];
+  double x_a = std::fabs(xlocal[0] * a_inv);
+  double y_b = std::fabs(xlocal[1] * b_inv);
+  double z_c = std::fabs(xlocal[2] * c_inv);
+  double x_a_pow_n_m2 = std::pow(x_a, n - 2.0);
+  double y_b_pow_n_m2 = std::pow(y_b, n - 2.0);
+  double z_c_pow_n_m2 = std::pow(z_c, n - 2.0);
+
+  // Equation (14)
+  double signx = xlocal[0] > 0.0 ? 1.0 : -1.0;
+  double signy = xlocal[1] > 0.0 ? 1.0 : -1.0;
+  double signz = xlocal[2] > 0.0 ? 1.0 : -1.0;
+  grad[0] = n * a_inv * (x_a_pow_n_m2 * x_a) * signx;
+  grad[1] = n * b_inv * (y_b_pow_n_m2 * y_b) * signy;
+  grad[2] = n * c_inv * (z_c_pow_n_m2 * z_c) * signz;
+
+  // Equation (15)
+  double signxy = signx * signy;
+  hess[0][0] = a_inv * a_inv * n * (n - 1.0) * x_a_pow_n_m2;
+  hess[1][1] = b_inv * b_inv * n * (n - 1.0) * y_b_pow_n_m2;
+  hess[2][2] = c_inv * c_inv * n * (n - 1.0) * z_c_pow_n_m2;
+  hess[0][1] = hess[1][0] = hess[0][2] = hess[2][0] = hess[1][2] = hess[2][1] = 0.0;
+}
+
+
+// Special case for n1 = n2 = 2
+void PairGranHookeHistoryEllipsoid::derivatives_local_ellips(const double* xlocal, const double* shape, double* grad, double hess[3][3]) {
+  double a = 2.0 / (shape[0] * shape[0]);
+  double b = 2.0 / (shape[1] * shape[1]);
+  double c = 2.0 / (shape[2] * shape[2]);
+  
+  // Equation (14) simplified for n1 = n2 = 2
+  grad[0] = a * xlocal[0];
+  grad[1] = b * xlocal[1];
+  grad[2] = c * xlocal[2];
+
+  // Equation (15)
+  hess[0][0] = a;
+  hess[1][1] = b;
+  hess[2][2] = c;
+  hess[0][1] = hess[1][0] = hess[0][2] = hess[2][0] = hess[1][2] = hess[2][1] = 0.0;
+}
+
+void PairGranHookeHistoryEllipsoid::derivatives_global(const double* xc, const double R[3][3], const double* shape, const double* block, const int flag, const double* X0, double* grad, double hess[3][3]) {
+  double xlocal[3], tmp_v[3], tmp_m[3][3];
+  MathExtra::sub3(X0, xc, tmp_v);
+  MathExtra::transpose_matvec(R, tmp_v, xlocal);
+  switch (flag) {
+    case 0:
+      derivatives_local_ellips(xlocal, shape, tmp_v, hess);
+      break;
+    case 1:
+      derivatives_local_equaln(xlocal, shape, block[0], tmp_v, hess);
+      break;
+    case 2:
+      derivatives_local(xlocal, shape, block, tmp_v, hess);
+      break;
+  }
+  MathExtra::matvec(R, tmp_v, grad);
+  MathExtra::times3_transpose(hess, R, tmp_m);
+  MathExtra::times3(R, tmp_m, hess);
+}
 
 
 // High performance version
@@ -975,12 +1041,12 @@ double PairGranHookeHistoryEllipsoid::shape_and_gradient_local(const double* xlo
   double z_c = std::fabs(xlocal[2] * c_inv);
   double n1 = block[0];
   double n2 = block[1];
-  // Consider simplifying with flag_super
+
   double x_a_pow_n2_m1 = std::pow(x_a, n2 - 1.0);
   double y_b_pow_n2_m1 = std::pow(y_b, n2 - 1.0);
 
   double nu = (x_a_pow_n2_m1 * x_a) + (y_b_pow_n2_m1 * y_b);
-  double nu_pow_n1_n2_m1 = std::pow(nu, n1/n2 - 1.0); // TODO: guard against n1 = n2
+  double nu_pow_n1_n2_m1 = std::pow(nu, n1/n2 - 1.0);
 
   double z_c_pow_n1_m1 = std::pow(z_c, n1 - 1.0);
 
@@ -995,22 +1061,69 @@ double PairGranHookeHistoryEllipsoid::shape_and_gradient_local(const double* xlo
   return (nu_pow_n1_n2_m1 * nu) + (z_c_pow_n1_m1 * z_c) - 1.0;
 }
 
-double PairGranHookeHistoryEllipsoid::compute_residual(double* xci, double Ri[3][3], double* shapei, double* blocki,
-                                                       double* xcj, double Rj[3][3], double* shapej, double* blockj,
-                                                       double* X, double* shapefunc, double* residual) {
-  double tmp[3];
-  double xi_local[3], xj_local[3];
+// Special case for n2 = n2 = n > 2
+double PairGranHookeHistoryEllipsoid::shape_and_gradient_local_equaln(const double* xlocal, const double* shape, const double n, double* grad) {
+  double a_inv = 1.0 / shape[0];
+  double b_inv = 1.0 / shape[1];
+  double c_inv = 1.0 / shape[2];
+  double x_a = std::fabs(xlocal[0] * a_inv);
+  double y_b = std::fabs(xlocal[1] * b_inv);
+  double z_c = std::fabs(xlocal[2] * c_inv);
+
+  double x_a_pow_n_m1 = std::pow(x_a, n - 1.0);
+  double y_b_pow_n_m1 = std::pow(y_b, n - 1.0);
+  double z_c_pow_n_m1 = std::pow(z_c, n - 1.0);
+
+  // Equation (14)
+  double signx = xlocal[0] > 0.0 ? 1.0 : -1.0;
+  double signy = xlocal[1] > 0.0 ? 1.0 : -1.0;
+  double signz = xlocal[2] > 0.0 ? 1.0 : -1.0;
+  grad[0] = n * a_inv * x_a_pow_n_m1 * signx;
+  grad[1] = n * b_inv * y_b_pow_n_m1 * signy;
+  grad[2] = n * c_inv * z_c_pow_n_m1 * signz;
+
+  return (x_a_pow_n_m1 * x_a) + (y_b_pow_n_m1 * y_b) + (z_c_pow_n_m1 * z_c) - 1.0;
+}
+
+// Special case for n1 = n2 = 2
+double PairGranHookeHistoryEllipsoid::shape_and_gradient_local_ellips(const double* xlocal, const double* shape, double* grad) {
+  double a = 2.0 / (shape[0] * shape[0]);
+  double b = 2.0 / (shape[1] * shape[1]);
+  double c = 2.0 / (shape[2] * shape[2]);
+
+  // Equation (14) simplified for n1 = n2 = 2
+  grad[0] = a * xlocal[0];
+  grad[1] = b * xlocal[1];
+  grad[2] = c * xlocal[2];
+
+  return 0.5 * (grad[0]*xlocal[0] + grad[1]*xlocal[1] + grad[2]*xlocal[2]) - 1.0;
+}
+
+double PairGranHookeHistoryEllipsoid::shape_and_gradient_global(const double* xc, const double R[3][3], const double* shape, const double* block, const int flag, const double* X0, double* grad) {
+  double shapefunc, tmp[3], xlocal[3];
+  MathExtra::sub3(X0, xc, tmp);
+  MathExtra::transpose_matvec(R, tmp, xlocal);
+  switch (flag) {
+    case 0:
+      shapefunc = shape_and_gradient_local_ellips(xlocal, shape, tmp);
+      break;
+    case 1:
+      shapefunc = shape_and_gradient_local_equaln(xlocal, shape, block[0], tmp);
+      break;
+    case 2:
+      shapefunc = shape_and_gradient_local(xlocal, shape, block, tmp);
+      break;
+  }
+  MathExtra::matvec(R, tmp, grad);
+  return shapefunc;
+}
+
+double PairGranHookeHistoryEllipsoid::compute_residual(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki, const int flagi,
+                                                       const double* xcj, const double Rj[3][3], const double* shapej, const double* blockj, const int flagj,
+                                                       const double* X, double* shapefunc, double* residual) {
   double gradi[3], gradj[3];
-
-  MathExtra::sub3(X, xci, tmp);
-  MathExtra::transpose_matvec(Ri, tmp, xi_local);
-  shapefunc[0] = shape_and_gradient_local(xi_local, shapei, blocki, tmp);
-  MathExtra::matvec(Ri, tmp, gradi);
-
-  MathExtra::sub3(X, xcj, tmp);
-  MathExtra::transpose_matvec(Rj, tmp, xj_local);
-  shapefunc[1] = shape_and_gradient_local(xj_local, shapej, blockj, tmp);
-  MathExtra::matvec(Rj, tmp, gradj);
+  shapefunc[0] = shape_and_gradient_global(xci, Ri, shapei, blocki, flagi, X, gradi);
+  shapefunc[1] = shape_and_gradient_global(xcj, Rj, shapej, blockj, flagj, X, gradj);
 
   // Equation (23)
   MathExtra::scaleadd3(X[3], gradj, gradi, residual);
@@ -1018,26 +1131,13 @@ double PairGranHookeHistoryEllipsoid::compute_residual(double* xci, double Ri[3]
   return residual[0]*residual[0] + residual[1]*residual[1] + residual[2]*residual[2] + residual[3]*residual[3];
 }
 
-void PairGranHookeHistoryEllipsoid::compute_jacobian(double* xci, double Ri[3][3], double* shapei, double* blocki,
-                                                     double* xcj, double Rj[3][3], double* shapej, double* blockj,
-                                                     double* X, double* jacobian) {
-  double tmp_v[3], tmp_m[3][3];
-  double xi_local[3], xj_local[3];
+void PairGranHookeHistoryEllipsoid::compute_jacobian(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki, const int flagi,
+                                                     const double* xcj, const double Rj[3][3], const double* shapej, const double* blockj, const int flagj,
+                                                     const double* X, double* jacobian) {
   double gradi[3], hessi[3][3], gradj[3], hessj[3][3];
 
-  MathExtra::sub3(X, xci, tmp_v);
-  MathExtra::transpose_matvec(Ri, tmp_v, xi_local);
-  derivatives_local(xi_local, shapei, blocki, tmp_v, hessi);
-  MathExtra::matvec(Ri, tmp_v, gradi);
-  MathExtra::times3_transpose(hessi, Ri, tmp_m);
-  MathExtra::times3(Ri, tmp_m, hessi);
-
-  MathExtra::sub3(X, xcj, tmp_v);
-  MathExtra::transpose_matvec(Rj, tmp_v, xj_local);
-  derivatives_local(xj_local, shapej, blockj, tmp_v, hessj);
-  MathExtra::matvec(Rj, tmp_v, gradj);
-  MathExtra::times3_transpose(hessj, Rj, tmp_m);
-  MathExtra::times3(Rj, tmp_m, hessj);
+  derivatives_global(xci, Ri, shapei, blocki, flagi, X, gradi, hessi);
+  derivatives_global(xcj, Rj, shapej, blockj, flagj, X, gradj, hessj);
 
   // Jacobian (derivative of residual)
   // 1D column-major matrix for LAPACK/linalg compatibility
@@ -1054,15 +1154,18 @@ void PairGranHookeHistoryEllipsoid::compute_jacobian(double* xci, double Ri[3][3
 }
 
 
-int PairGranHookeHistoryEllipsoid::determine_contact_point(double* xci, double Ri[3][3], double* shapei, double* blocki,
-                                                            double* xcj, double Rj[3][3], double* shapej, double* blockj,
-                                                            double* X0) {
+int PairGranHookeHistoryEllipsoid::determine_contact_point(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki,
+                                                           const double* xcj, const double Rj[3][3], const double* shapej, const double* blockj,
+                                                           double* X0) {
   double norm, norm_ini, shapefunc[2], residual[4], jacobian[16];
   bool converged(false);
-  norm = compute_residual(xci, Ri, shapei, blocki, xcj, Rj, shapej, blockj, X0, shapefunc, residual);
+  int flagi = determine_flag(blocki);
+  int flagj = determine_flag(blockj);
+
+  norm = compute_residual(xci, Ri, shapei, blocki, flagi, xcj, Rj, shapej, blockj, flagj, X0, shapefunc, residual);
   for (int iter = 0 ; iter < ITERMAX_NEWTON ; iter++) {
     norm_ini = norm;
-    compute_jacobian(xci, Ri, shapei, blocki, xcj, Rj, shapej, blockj, X0, jacobian);
+    compute_jacobian(xci, Ri, shapei, blocki, flagi, xcj, Rj, shapej, blockj, flagj, X0, jacobian);
 
     // Solve Newton step
     int lapack_error, ipiv[16];
@@ -1085,7 +1188,7 @@ int PairGranHookeHistoryEllipsoid::determine_contact_point(double* xci, double R
       X_line[2] = X0[2] + a * rhs[2];
       X_line[3] = X0[3] + a * rhs[3];
 
-      norm = compute_residual(xci, Ri, shapei, blocki, xcj, Rj, shapej, blockj, X_line, shapefunc, residual);
+      norm = compute_residual(xci, Ri, shapei, blocki, flagi, xcj, Rj, shapej, blockj, flagj, X_line, shapefunc, residual);
       if (norm < norm_ini - PARAMETER_LINESEARCH * a * norm_ini)
         break; // Armijo - Goldstein condition
       else
@@ -1109,4 +1212,14 @@ int PairGranHookeHistoryEllipsoid::determine_contact_point(double* xci, double R
     return 5;
 
   return 0;
+}
+
+int PairGranHookeHistoryEllipsoid::determine_flag(const double* block) {
+  const double EPSBLOCK(1e-3);
+  int flag(2);
+  if ((std::fabs(block[0] - 2) <= EPSBLOCK) || (std::fabs(block[1] - 2) <= EPSBLOCK))
+    flag = 0;
+  else if (std::fabs(block[0] - block[1]) <= EPSBLOCK)
+    flag = 1;
+  return flag;
 }

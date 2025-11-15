@@ -71,11 +71,20 @@ class PairGranHookeHistoryEllipsoid : public Pair {
   void allocate();
 
  private:
-  static void derivatives_local(const double*, const double*, const double*, double*, double[3][3]); // High performance version
-  static double shape_and_gradient_local(const double*, const double*, const double*, double*); // High performance version
-  static double compute_residual(double*, double[3][3], double*, double*, double*, double[3][3], double*, double*, double*, double*, double*);
-  static void compute_jacobian(double*, double[3][3], double*, double*, double*, double[3][3], double*, double*, double*, double*);
-  static int determine_contact_point(double*, double[3][3], double*, double*, double*, double[3][3], double*, double*, double*);
+  static void derivatives_local(const double*, const double*, const double*, double*, double[3][3]);
+  static void derivatives_local_equaln(const double*, const double*, const double, double*, double[3][3]);
+  static void derivatives_local_ellips(const double*, const double*, double*, double[3][3]);
+  static void derivatives_global(const double*, const double[3][3], const double*, const double*, const int, const double*, double*, double[3][3]);
+
+  static double shape_and_gradient_local(const double*, const double*, const double*, double*);
+  static double shape_and_gradient_local_equaln(const double*, const double*, const double, double*);
+  static double shape_and_gradient_local_ellips(const double*, const double*, double*);
+  static double shape_and_gradient_global(const double*, const double[3][3], const double*, const double*, const int, const double*, double*);
+
+  static double compute_residual(const double*, const double[3][3], const double*, const double*, const int, const double*, const double[3][3], const double*, const double*, const int, const double*, double*, double*);
+  static void compute_jacobian(const double*, const double[3][3], const double*, const double*, const int, const double*, const double[3][3], const double*, const double*, const int, const double*, double*);
+  static int determine_contact_point(const double*, const double[3][3], const double*, const double*, const double*, const double[3][3], const double*, const double*, double*);
+  static int determine_flag(const double*);
 
 
 };
