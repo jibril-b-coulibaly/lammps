@@ -997,7 +997,7 @@ void PairGranHookeHistoryEllipsoid::derivatives_local_ellips(const double* xloca
   double a = 2.0 / (shape[0] * shape[0]);
   double b = 2.0 / (shape[1] * shape[1]);
   double c = 2.0 / (shape[2] * shape[2]);
-  
+
   // Equation (14) simplified for n1 = n2 = 2
   grad[0] = a * xlocal[0];
   grad[1] = b * xlocal[1];
@@ -1217,7 +1217,7 @@ int PairGranHookeHistoryEllipsoid::determine_contact_point(const double* xci, co
 int PairGranHookeHistoryEllipsoid::determine_flag(const double* block) {
   const double EPSBLOCK(1e-3);
   int flag(2);
-  if ((std::fabs(block[0] - 2) <= EPSBLOCK) || (std::fabs(block[1] - 2) <= EPSBLOCK))
+  if ((std::fabs(block[0] - 2) <= EPSBLOCK) && (std::fabs(block[1] - 2) <= EPSBLOCK))
     flag = 0;
   else if (std::fabs(block[0] - block[1]) <= EPSBLOCK)
     flag = 1;
