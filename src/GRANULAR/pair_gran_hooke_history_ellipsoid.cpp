@@ -247,12 +247,18 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
           for (int iter_ig = 1 ; iter_ig <= NUMSTEP_INITIAL_GUESS ; iter_ig++) {
             X0[3] = 0.0; // Lagrange multiplier mu^2 initially zero
             double frac = iter_ig / double(NUMSTEP_INITIAL_GUESS);
-            double shapei[3] = {1.0, 1.0, 1.0};
-            double shapej[3] = {1.0, 1.0, 1.0};
+            shapei[0] = shapei[1] = shapei[2] = 1.0;
+            shapej[0] = shapej[1] = shapej[2] = 1.0;
             MathExtra::scaleadd3(1.0-frac, shapei, frac, bonus[ellipsoid[i]].shape, shapei);
             MathExtra::scaleadd3(1.0-frac, shapej, frac, bonus[ellipsoid[j]].shape, shapej);
-            double blocki[2] = {2.0 + frac * (bonus[ellipsoid[i]].block[0] - 2.0), 2.0 + frac * (bonus[ellipsoid[i]].block[1] - 2.0)};
-            double blockj[2] = {2.0 + frac * (bonus[ellipsoid[j]].block[0] - 2.0), 2.0 + frac * (bonus[ellipsoid[j]].block[1] - 2.0)};
+            if (bonus[ellipsoid[i]].flag_super) { // not a big time save
+              blocki[0] = 2.0 + frac * (bonus[ellipsoid[i]].blocki[0] - 2.0);
+              blocki[1] = 2.0 + frac * (bonus[ellipsoid[i]].blocki[1] - 2.0);
+            }
+            if (bonus[ellipsoid[j]].flag_super) {
+              blockj[0] = 2.0 + frac * (bonus[ellipsoid[j]].blocki[0] - 2.0);
+              blockj[1] = 2.0 + frac * (bonus[ellipsoid[j]].blocki[1] - 2.0);
+            }
             int status = determine_contact_point(x[i], Ri, shapei, blocki, x[j], Rj, shapej, blockj, X0);
             if (status == 0)
               touching = true;
