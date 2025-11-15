@@ -928,22 +928,21 @@ void PairGranHookeHistoryEllipsoid::derivatives_local(const double* xlocal, cons
   double a_inv = 1.0 / shape[0];
   double b_inv = 1.0 / shape[1];
   double c_inv = 1.0 / shape[2];
-  double x_a = xlocal[0] * a_inv;
-  double y_b = xlocal[1] * b_inv;
-  double z_c = xlocal[2] * c_inv;
+  double x_a = std::fabs(xlocal[0] * a_inv);
+  double y_b = std::fabs(xlocal[1] * b_inv);
+  double z_c = std::fabs(xlocal[2] * c_inv);
   double n1 = block[0];
   double n2 = block[1];
-  // Consider simplifying with flag_super
-  double x_a_pow_n2_m2 = std::pow(std::abs(x_a), n2 - 2.0);
+  double x_a_pow_n2_m2 = std::pow(x_a, n2 - 2.0);
   double x_a_pow_n2_m1 = x_a_pow_n2_m2 * x_a;
-  double y_b_pow_n2_m2 = std::pow(std::abs(y_b), n2 - 2.0);
+  double y_b_pow_n2_m2 = std::pow(y_b, n2 - 2.0);
   double y_b_pow_n2_m1 = y_b_pow_n2_m2 * y_b;
 
   double nu = (x_a_pow_n2_m1 * x_a) + (y_b_pow_n2_m1 * y_b);
-  double nu_pow_n1_n2_m2 = std::pow(nu, n1/n2 - 2.0);
+  double nu_pow_n1_n2_m2 = std::pow(nu, n1/n2 - 2.0); // TODO: if n1=n2, this should be zero, not 1/nu. Guard against this by making multiple cases
   double nu_pow_n1_n2_m1 = nu_pow_n1_n2_m1 * nu;
 
-  double z_c_pow_n1_m2 = std::pow(std::abs(z_c), n1 -2.0);
+  double z_c_pow_n1_m2 = std::pow(z_c, n1 -2.0);
 
   // Equation (14)
   double signx = xlocal[0] > 0.0 ? 1.0 : -1.0;
@@ -964,24 +963,26 @@ void PairGranHookeHistoryEllipsoid::derivatives_local(const double* xlocal, cons
   hess[0][2] = hess[2][0] = hess[1][2] = hess[2][1] = 0.0;
 }
 
+
+
 // High performance version
 double PairGranHookeHistoryEllipsoid::shape_and_gradient_local(const double* xlocal, const double* shape, const double* block, double* grad) {
   double a_inv = 1.0 / shape[0];
   double b_inv = 1.0 / shape[1];
   double c_inv = 1.0 / shape[2];
-  double x_a = xlocal[0] * a_inv;
-  double y_b = xlocal[1] * b_inv;
-  double z_c = xlocal[2] * c_inv;
+  double x_a = std::fabs(xlocal[0] * a_inv);
+  double y_b = std::fabs(xlocal[1] * b_inv);
+  double z_c = std::fabs(xlocal[2] * c_inv);
   double n1 = block[0];
   double n2 = block[1];
   // Consider simplifying with flag_super
-  double x_a_pow_n2_m1 = std::pow(std::abs(x_a), n2 - 1.0);
-  double y_b_pow_n2_m1 = std::pow(std::abs(y_b), n2 - 1.0);
+  double x_a_pow_n2_m1 = std::pow(x_a, n2 - 1.0);
+  double y_b_pow_n2_m1 = std::pow(y_b, n2 - 1.0);
 
   double nu = (x_a_pow_n2_m1 * x_a) + (y_b_pow_n2_m1 * y_b);
-  double nu_pow_n1_n2_m1 = std::pow(nu, n1/n2 - 1.0);
+  double nu_pow_n1_n2_m1 = std::pow(nu, n1/n2 - 1.0); // TODO: guard against n1 = n2
 
-  double z_c_pow_n1_m1 = std::pow(std::abs(z_c), n1 - 1.0);
+  double z_c_pow_n1_m1 = std::pow(z_c, n1 - 1.0);
 
   // Equation (14)
   double signx = xlocal[0] > 0.0 ? 1.0 : -1.0;
