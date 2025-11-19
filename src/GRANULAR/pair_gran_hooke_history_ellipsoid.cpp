@@ -245,12 +245,21 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
             error->all(FLERR, "Ellipsoid contact detection failed with status {} ", status);
         } else {
           // New contact: Build initial guess incrementally
-          MathExtra::scaleadd3(radj / radsum, x[i], radi /radsum, x[j], X0);
+          // TODO: there might be better heuristic for the "volume equivalent spheres" suggested in the paper
+          //       but this is good enough. We might even be able to use radi and radj which is cheaper, TBD when testing
+          //       If we pick a small radius, we could guaranteed to start outise the grains, would that be better for the Newton?
+          //       If we pick a large radius (e.g. radi, radj) we are more likely to start inside the grains, is this an easier minimization landscape to navigate?
+          //       I don't think there is a general answer because we don't know the shape, and contact point may be far from spherical initial guess
+          //       This makes me think using radi and radj could be fine! To be investigated
+          double reqi = std::cbrt(bonus[ellipsoid[i]].shape[0] * bonus[ellipsoid[i]].shape[1] * bonus[ellipsoid[i]].shape[2]);
+          double reqj = std::cbrt(bonus[ellipsoid[j]].shape[0] * bonus[ellipsoid[j]].shape[1] * bonus[ellipsoid[j]].shape[2]);
+          MathExtra::scaleadd3(reqj / (reqi + reqj), x[i], reqi / (reqi + reqj), x[j], X0);
+          //   MathExtra::scaleadd3(radj / radsum, x[i], radi /radsum, x[j], X0);
           for (int iter_ig = 1 ; iter_ig <= NUMSTEP_INITIAL_GUESS ; iter_ig++) {
             X0[3] = 0.0; // Lagrange multiplier mu^2 initially zero
             double frac = iter_ig / double(NUMSTEP_INITIAL_GUESS);
-            shapei[0] = shapei[1] = shapei[2] = 1.0;
-            shapej[0] = shapej[1] = shapej[2] = 1.0;
+            shapei[0] = shapei[1] = shapei[2] = reqi;
+            shapej[0] = shapej[1] = shapej[2] = reqj;
             MathExtra::scaleadd3(1.0-frac, shapei, frac, bonus[ellipsoid[i]].shape, shapei);
             MathExtra::scaleadd3(1.0-frac, shapej, frac, bonus[ellipsoid[j]].shape, shapej);
             if (bonus[ellipsoid[i]].flag_super) { // not a big time save
