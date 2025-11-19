@@ -80,7 +80,7 @@ class PairGranHookeHistoryEllipsoid : public Pair {
   static double compute_residual(const double, const double*, const double, const double*, const double, double*);
   static void compute_jacobian(const double*, const double[3][3], const double*, const double[3][3], const double, double* jacobian);
   static double compute_residual_and_jacobian(const double*, const double[3][3], const double*, const double*, const int, const double*, const double[3][3], const double*, const double*, const int, const double*, double*, double*, double*);
-  static int determine_contact_point(const double*, const double[3][3], const double*, const double*, const double*, const double[3][3], const double*, const double*, double*);
+  static int determine_contact_point(const double*, const double[3][3], const double*, const double*, const double*, const double[3][3], const double*, const double*, double*, double*);
   static int determine_flag(const double*);
 
   // Below not implemented. Placeholder if we decide not to compute local hessian in line search

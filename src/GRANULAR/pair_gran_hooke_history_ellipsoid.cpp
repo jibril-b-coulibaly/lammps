@@ -130,7 +130,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
   double quat1, quat2, quat3, quat4;
   double block1, block2;
 
-  double X0[4], shapei[3], blocki[3], shapej[3], blockj[3], Ri[3][3], Rj[3][3];
+  double X0[4], nij[3], shapei[3], blocki[3], shapej[3], blockj[3], Ri[3][3], Rj[3][3];
   // TODO: Maybe we can make flag_super of the grain an int instead, to cimplify when n1 = n2 ?
   int flagi, flagj; // 0 : ellipsoid, 1 : equal exponents n1=n2, 2: general super-ellipsoid n1 >2, n2>2, n1!=n2
 
@@ -236,7 +236,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
           //       not sure if enough information to do that
           MathExtra::copy3(prev_cp, X0);
           X0[3] = 0.0; // Lagrange multiplier mu^2 initially zero
-          int status = determine_contact_point(x[i], Ri, shapei, blocki, x[j], Rj, shapej, blockj, X0);
+          int status = determine_contact_point(x[i], Ri, shapei, blocki, x[j], Rj, shapej, blockj, X0, nij);
           if (status == 0)
             touching = true;
           else if(status == 5)
@@ -270,7 +270,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
               blockj[0] = 2.0 + frac * (bonus[ellipsoid[j]].block[0] - 2.0);
               blockj[1] = 2.0 + frac * (bonus[ellipsoid[j]].block[1] - 2.0);
             }
-            int status = determine_contact_point(x[i], Ri, shapei, blocki, x[j], Rj, shapej, blockj, X0);
+            int status = determine_contact_point(x[i], Ri, shapei, blocki, x[j], Rj, shapej, blockj, X0, nij);
             if (status == 0)
               touching = true;
             else if(status == 5)
@@ -1091,7 +1091,7 @@ double PairGranHookeHistoryEllipsoid::compute_residual_and_jacobian(const double
 
 int PairGranHookeHistoryEllipsoid::determine_contact_point(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki,
                                                            const double* xcj, const double Rj[3][3], const double* shapej, const double* blockj,
-                                                           double* X0) {
+                                                           double* X0, double* nij) {
   double norm, norm_ini, shapefunc[2], residual[4], jacobian[16];
   bool converged(false);
   int flagi = determine_flag(blocki);
@@ -1182,6 +1182,11 @@ int PairGranHookeHistoryEllipsoid::determine_contact_point(const double* xci, co
           compute_jacobian(gradi, hessi, gradj, hessj, X0[3], jacobian);
         } else {
           converged = true;
+          // TODO: consider testing picking the normal with the least error
+          //       i.e., likely the grain with the smallest curvature (Hessian norm)
+          //       or some other measure like average gradients.
+          //       right now we use the gradient on grain i for simplicity and performance. When testing, we could see if using  is just as good
+          MathExtra::normalize3(gradi, nij);
         }
         break;
       }
