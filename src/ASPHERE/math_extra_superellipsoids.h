@@ -54,6 +54,22 @@ namespace MathExtraSuperellipsoids {
                                       const double* center_distance_box1, const double* center_distance_box2,
                                       const double* a, const double* b);
 
+  // Jibril's versions of the functions for contact detection
+  double shape_and_derivatives_local(const double* xlocal, const double* shape, const double* block, const int flag, double* grad, double hess[3][3]);
+  double shape_and_derivatives_local_superquad(const double* xlocal, const double* shape, const double* block, double* grad, double hess[3][3]);
+  double shape_and_derivatives_local_n1equaln2(const double* xlocal, const double* shape, const double n, double* grad, double hess[3][3]);
+  double shape_and_derivatives_local_ellipsoid(const double* xlocal, const double* shape, double* grad, double hess[3][3]);
+  double shape_and_derivatives_global(const double* xc, const double R[3][3], const double* shape, const double* block, const int flag, const double* X0, double* grad, double hess[3][3]);
+  double compute_residual(const double shapefunci, const double* gradi_global, const double shapefuncj, const double* gradj_global, const double mu2, double* residual);
+  void compute_jacobian(const double* gradi_global, const double hessi_global[3][3], const double* gradj_global, const double hessj_global[3][3], const double mu2, double* jacobian);
+  double compute_residual_and_jacobian(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki, const int flagi,
+                                       const double* xcj, const double Rj[3][3], const double* shapej, const double* blockj, const int flagj,
+                                       const double* X, double* shapefunc, double* residual, double* jacobian);
+  int determine_contact_point(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki,
+                              const double* xcj, const double Rj[3][3], const double* shapej, const double* blockj,
+                              double* X0, double* nij);
+  int determine_flag(const double* block);
+
 };
 
 
