@@ -46,6 +46,13 @@ namespace MathExtraSuperellipsoids {
   inline bool solve_4x4_robust_unrolled(double A[16], double b[4]); 
 
   // ADD CONTACT DETECTION HERE
+  inline bool check_oriented_bounding_boxes(const double* xc1, const double R1[3][3], const double* shape1,
+                                        const double* xc2, const double R2[3][3], const double* shape2, 
+                                        int &cached_axis);
+
+  inline bool check_intersection_axis(const int axis_id, const double C[3][3], const double AbsC[3][3], 
+                                      const double* center_distance_box1, const double* center_distance_box2,
+                                      const double* a, const double* b);
 
 };
 
@@ -290,6 +297,158 @@ inline bool MathExtraSuperellipsoids::solve_4x4_robust_unrolled(double A[16], do
 
     return true;
 
+}
+
+
+// algorithm from https://www.geometrictools.com/Documentation/DynamicCollisionDetection.pdf
+/* * Oriented Bounding Box intersection test.
+ * Logic and optimization strategies adapted from LIGGGHTS (CFDEMproject).
+ * See: src/math_extra_liggghts_nonspherical.cpp in LIGGGHTS distribution.
+ * * This implementation uses the "cached separating axis" optimization 
+ * for temporal coherence.
+ */
+inline bool MathExtraSuperellipsoids::check_oriented_bounding_boxes(
+    const double* xc1, const double R1[3][3], const double* shape1,
+    const double* xc2, const double R2[3][3], const double* shape2, 
+    int &cached_axis
+){
+    // cache axis is the axis that separated the boxes last time
+    // due to temporal coherence we check it first
+
+    bool separated = false;
+
+    // for orientated bounding boxes we check the 15 separating axes
+    double C[3][3], AbsC[3][3];
+    MathExtra::transpose_times3(R1, R2, C); // C = R1^T * R2
+    for (unsigned int i=0; i<3; i++){
+        for (unsigned int j=0; j<3; j++){
+            AbsC[i][j] = std::fabs(C[i][j]); // we only need the absolute values
+        }
+    }
+
+    double center_distance[3];
+    for (unsigned int i=0; i<3; i++){
+        center_distance[i] = xc2[i] - xc1[i];
+    } 
+
+    // rotate center distance into box 1 frame
+    double center_distance_box1[3];
+    MathExtra::transpose_matvec(R1, center_distance,  center_distance_box1);
+
+    //rotate center distance into box 2 frame
+    double center_distance_box2[3];
+    MathExtra::transpose_matvec(R2, center_distance,  center_distance_box2);
+
+    // first check the cached axis
+    separated = check_intersection_axis(cached_axis, C, AbsC, center_distance_box1, center_distance_box2, shape1, shape2);
+
+    if (separated) return true;
+    // then check all the other axes
+    for (int axis_id = 0; axis_id < 15; axis_id++){
+        if (axis_id == cached_axis) continue; // already checked
+        separated = check_intersection_axis(axis_id, C, AbsC, center_distance_box1, center_distance_box2, shape1, shape2);
+        if (separated) {
+            cached_axis = axis_id; // update cached axis
+            return true;
+        }
+    }
+    return false; // no separation found
+}
+
+inline bool MathExtraSuperellipsoids::check_intersection_axis(
+    const int axis_id, const double C[3][3], const double AbsC[3][3], 
+    const double* center_distance_box1, const double* center_distance_box2,
+    const double* a, const double* b
+){
+    // here axis_id goes from 0 to 14
+    // a and b are the half-sizes of the boxes along their local axes
+    // returns true if there is a separation along this axis
+    // changes the cached axis if separation found
+    double R1, R2, R;
+
+    switch(axis_id){
+        case 0: // A0
+            R1 = a[0];
+            R2 = b[0] * AbsC[0][0] + b[1] * AbsC[0][1] + b[2] * AbsC[0][2];
+            R = std::fabs(center_distance_box1[0]);
+            break;
+        case 1: // A1
+            R1 = a[1];
+            R2 = b[0] * AbsC[1][0] + b[1] * AbsC[1][1] + b[2] * AbsC[1][2];
+            R = std::fabs(center_distance_box1[1]);
+            break;
+        case 2: // A2
+            R1 = a[2];
+            R2 = b[0] * AbsC[2][0] + b[1] * AbsC[2][1] + b[2] * AbsC[2][2];
+            R = std::fabs(center_distance_box1[2]);
+            break;
+        case 3: // B0
+            R1 = a[0] * AbsC[0][0] + a[1] * AbsC[1][0] + a[2] * AbsC[2][0];
+            R2 = b[0];
+            R = std::fabs(center_distance_box2[0]);
+            break;
+        case 4: // B1
+            R1 = a[0] * AbsC[0][1] + a[1] * AbsC[1][1] + a[2] * AbsC[2][1];
+            R2 = b[1];
+            R = std::fabs(center_distance_box2[1]);
+            break;
+        case 5: // B2
+            R1 = a[0] * AbsC[0][2] + a[1] * AbsC[1][2] + a[2] * AbsC[2][2];
+            R2 = b[2];
+            R = std::fabs(center_distance_box2[2]);
+            break;
+        case 6: // A0 x B0
+            R1 = a[1] * AbsC[2][0] + a[2] * AbsC[1][0];
+            R2 = b[1] * AbsC[0][2] + b[2] * AbsC[0][1];
+            R = std::fabs(center_distance_box1[2] * C[1][0] - center_distance_box1[1] * C[2][0]);
+            break;
+        case 7: // A0 x B1
+            R1 = a[1] * AbsC[2][1] + a[2] * AbsC[1][1];
+            R2 = b[0] * AbsC[0][2] + b[2] * AbsC[0][0];
+            R = std::fabs(center_distance_box1[2] * C[1][1] - center_distance_box1[1] * C[2][1]);
+            break;
+        case 8: // A0 x B2
+            R1 = a[1] * AbsC[2][2] + a[2] * AbsC[1][2];
+            R2 = b[0] * AbsC[0][1] + b[1] * AbsC[0][0];
+            R = std::fabs(center_distance_box1[2] * C[1][2] - center_distance_box1[1] * C[2][2]);
+            break;
+        case 9: // A1 x B0
+            R1 = a[0] * AbsC[2][0] + a[2] * AbsC[0][0];
+            R2 = b[1] * AbsC[1][2] + b[2] * AbsC[1][1];
+            R = std::fabs(center_distance_box1[0] * C[2][0] - center_distance_box1[2] * C[0][0]);
+            break;
+        case 10: // A1 x B1
+            R1 = a[0] * AbsC[2][1] + a[2] * AbsC[0][1];
+            R2 = b[0] * AbsC[1][2] + b[2] * AbsC[1][0];
+            R = std::fabs(center_distance_box1[0] * C[2][1] - center_distance_box1[2] * C[0][1]);
+            break;
+        case 11: // A1 x B2
+            R1 = a[0] * AbsC[2][2] + a[2] * AbsC[0][2];
+            R2 = b[0] * AbsC[1][1] + b[1] * AbsC[1][0];
+            R = std::fabs(center_distance_box1[0] * C[2][2] - center_distance_box1[2] * C[0][2]);
+            break;
+        case 12: // A2 x B0
+            R1 = a[0] * AbsC[1][0] + a[1] * AbsC[0][0];
+            R2 = b[1] * AbsC[2][2] + b[2] * AbsC[2][1];
+            R = std::fabs(center_distance_box1[1] * C[0][0] - center_distance_box1[0] * C[1][0]);
+            break;
+        case 13: // A2 x B1
+            R1 = a[0] * AbsC[1][1] + a[1] * AbsC[0][1];
+            R2 = b[0] * AbsC[2][2] + b[2] * AbsC[2][0];
+            R = std::fabs(center_distance_box1[1] * C[0][1] - center_distance_box1[0] * C[1][1]);
+            break;
+        case 14: // A2 x B2
+            R1 = a[0] * AbsC[1][2] + a[1] * AbsC[0][2];
+            R2 = b[0] * AbsC[2][1] + b[1] * AbsC[2][0];
+            R = std::fabs(center_distance_box1[1] * C[0][2] - center_distance_box1[0] * C[1][2]);
+            break;
+    }
+
+    if (R > R1 + R2){
+        return true; // separation found
+    } else {
+        return false; // no separation
+    }
 }
 
 
