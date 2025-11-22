@@ -642,13 +642,17 @@ double stable_shape_and_gradients_local_ellipsoid(const double* xlocal, const do
 }
 
 // Newton Rapson method to find the overlap distance from the contact point given the normal
-void find_overlap_distance(
-  const double* shape, const double* block, const double* quat,
-  const double* global_point, const double* global_normal, double& overlap)
+void compute_overlap_distance(
+  const double* shape, const double* block, const double Rot[3][3],
+  const double* global_point, const double* global_normal,
+  const double* center, double& overlap)
    {
   double local_point[3], local_normal[3];
-  global2local_vector(global_point, quat, local_point);
-  global2local_vector(global_normal, quat, local_normal);
+  double del[3];
+  MathExtra::sub3(global_point, center, del);  // bring origin to 0.0
+  MathExtra::transpose_matvec(Rot, del, local_point); 
+  MathExtra::transpose_matvec(Rot, global_normal, local_normal);
+  
   double local_f;
   double local_grad[3];
   

@@ -113,7 +113,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
   double fn, fs, fs1, fs2, fs3;
   double shrmag, rsht;
   int *ilist, *jlist, *numneigh, **firstneigh;
-  int *touch, **firsttouch;
+  int *touch, **firsttouch, *cached_axis_index; // added cached axis index for bounding box check
   double *shear, *allshear, **firstshear, *prev_cp; // added previous contact point placeholder
 
   double shapex, shapey, shapez; // ellipsoid shape params
@@ -203,29 +203,87 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
       radj = radius[j];
       radsum = radi + radj;
 
-      bool touching;
+      bool touching = true;
       if (rsq >= radsum * radsum) {
         touching = false;
-      // TODO: consider implementing a bounding-box check for hierchical detection
-      //       Could be useful for high aspect ratio grain.
-      //       Maybe make it an option, since it could be slower for low aspect ratio grains
-      } else {
-        // Super-ellipsoid contact detection between atoms i and j
-        MathExtra::quat_to_mat(bonus[ellipsoid[i]].quat, Ri);
-        // TODO: Not sure if j is accessible if ghost, radius is, so bonus props must have been communicated on ghost atoms I think
-        MathExtra::quat_to_mat(bonus[ellipsoid[j]].quat, Rj);
+      }
+      else {    
+         // compute aspect ratios, if they are not that different from zero skip
+         // to the newton rapson, else do the bounding box
+         MathExtra::copy3(bonus[ellipsoid[i]].shape, shapei);
+         MathExtra::copy3(bonus[ellipsoid[j]].shape, shapej);
+         MathExtra::copy3(bonus[ellipsoid[i]].block, blocki);
+         MathExtra::copy3(bonus[ellipsoid[j]].block, blockj);
 
-        if (touch[jj] == 1) {
-          // Continued contact: use grain true shape and last contact point
-          MathExtra::copy3(bonus[ellipsoid[i]].shape, shapei);
-          MathExtra::copy3(bonus[ellipsoid[j]].shape, shapej);
-          MathExtra::copy3(bonus[ellipsoid[i]].block, blocki);
-          MathExtra::copy3(bonus[ellipsoid[j]].block, blockj);
-          // TODO: implement neigh history!
-          // TODO: move contact point with rigid body motion of the pair ?
-          //       not sure if enough information to do that
-          MathExtra::copy3(prev_cp, X0);
-          X0[3] = 1.0; // Lagrange multiplier mu^2 initially one (makes the Newton more stable in continued contact)
+         double min_dim_i = std::fmin(shapei[0], std::fmin(shapei[1], shapei[2]));
+         double min_dim_j = std::fmin(shapej[0], std::fmin(shapej[1], shapej[2]));
+         double max_dim_i = std::fmax(shapei[0], std::fmax(shapei[1], shapei[2]));
+         double max_dim_j = std::fmax(shapej[0], std::fmax(shapej[1], shapej[2]));
+
+         double ar_i = max_dim_i / min_dim_i; 
+         double ar_j = max_dim_j / min_dim_j;
+
+         // I put an arbitrary value for when to skip the bounding boxes
+         // this might need testing
+         bool high_aspect_ratio = (ar_i > 1.5 || ar_j > 1.5); 
+         MathExtra::quat_to_mat(bonus[ellipsoid[i]].quat, Ri);
+         // TODO: Not sure if j is accessible if ghost, radius is, so bonus props must have been communicated on ghost atoms I think
+         MathExtra::quat_to_mat(bonus[ellipsoid[j]].quat, Rj);
+          
+         if (high_aspect_ratio){
+          // check the bounding box
+          bool obb_separate = MathExtraSuperellipsoids::check_oriented_bounding_boxes(
+            x[i], Ri, shapei, x[j], Rj, shapej, *cached_axis_index);
+          
+          if (obb_separate) {
+            touching = false;
+          }
+        }
+      }
+
+      // Super-ellipsoid contact detection between atoms i and j
+      if (touch[jj] == 1  && touching) {
+        // Continued contact: use grain true shape and last contact point
+        // TODO: implement neigh history!
+        // TODO: move contact point with rigid body motion of the pair ?
+        //       not sure if enough information to do that
+        MathExtra::copy3(prev_cp, X0);
+        X0[3] = 1.0; // Lagrange multiplier mu^2 initially one (makes the Newton more stable in continued contact)
+        int status = MathExtraSuperellipsoids::determine_contact_point(x[i], Ri, shapei, blocki, x[j], Rj, shapej, blockj, X0, nij);
+        if (status == 0)
+          touching = true;
+        else if(status == 5)
+          touching = false;
+        else
+          error->all(FLERR, "Ellipsoid contact detection failed with status {} ", status);
+      } else {
+        if (touching){
+        // New contact: Build initial guess incrementally
+        // TODO: there might be better heuristic for the "volume equivalent spheres" suggested in the paper
+        //       but this is good enough. We might even be able to use radi and radj which is cheaper, TBD when testing
+        //       If we pick a small radius, we could guaranteed to start outise the grains, would that be better for the Newton?
+        //       If we pick a large radius (e.g. radi, radj) we are more likely to start inside the grains, is this an easier minimization landscape to navigate?
+        //       I don't think there is a general answer because we don't know the shape, and contact point may be far from spherical initial guess
+        //       This makes me think using radi and radj could be fine! To be investigated
+        double reqi = std::cbrt(bonus[ellipsoid[i]].shape[0] * bonus[ellipsoid[i]].shape[1] * bonus[ellipsoid[i]].shape[2]);
+        double reqj = std::cbrt(bonus[ellipsoid[j]].shape[0] * bonus[ellipsoid[j]].shape[1] * bonus[ellipsoid[j]].shape[2]);
+        MathExtra::scaleadd3(reqj / (reqi + reqj), x[i], reqi / (reqi + reqj), x[j], X0);
+        //   MathExtra::scaleadd3(radj / radsum, x[i], radi /radsum, x[j], X0);
+        for (int iter_ig = 1 ; iter_ig <= NUMSTEP_INITIAL_GUESS ; iter_ig++) {
+          X0[3] = 0.0; // Lagrange multiplier mu^2 initially zero
+          double frac = iter_ig / double(NUMSTEP_INITIAL_GUESS);
+          shapei[0] = shapei[1] = shapei[2] = reqi;
+          shapej[0] = shapej[1] = shapej[2] = reqj;
+          MathExtra::scaleadd3(1.0-frac, shapei, frac, bonus[ellipsoid[i]].shape, shapei);
+          MathExtra::scaleadd3(1.0-frac, shapej, frac, bonus[ellipsoid[j]].shape, shapej);
+          if (bonus[ellipsoid[i]].flag_super) { // not a big time save
+            blocki[0] = 2.0 + frac * (bonus[ellipsoid[i]].block[0] - 2.0);
+            blocki[1] = 2.0 + frac * (bonus[ellipsoid[i]].block[1] - 2.0);
+          }
+          if (bonus[ellipsoid[j]].flag_super) {
+            blockj[0] = 2.0 + frac * (bonus[ellipsoid[j]].block[0] - 2.0);
+            blockj[1] = 2.0 + frac * (bonus[ellipsoid[j]].block[1] - 2.0);
+          }
           int status = MathExtraSuperellipsoids::determine_contact_point(x[i], Ri, shapei, blocki, x[j], Rj, shapej, blockj, X0, nij);
           if (status == 0)
             touching = true;
@@ -233,40 +291,6 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
             touching = false;
           else
             error->all(FLERR, "Ellipsoid contact detection failed with status {} ", status);
-        } else {
-          // New contact: Build initial guess incrementally
-          // TODO: there might be better heuristic for the "volume equivalent spheres" suggested in the paper
-          //       but this is good enough. We might even be able to use radi and radj which is cheaper, TBD when testing
-          //       If we pick a small radius, we could guaranteed to start outise the grains, would that be better for the Newton?
-          //       If we pick a large radius (e.g. radi, radj) we are more likely to start inside the grains, is this an easier minimization landscape to navigate?
-          //       I don't think there is a general answer because we don't know the shape, and contact point may be far from spherical initial guess
-          //       This makes me think using radi and radj could be fine! To be investigated
-          double reqi = std::cbrt(bonus[ellipsoid[i]].shape[0] * bonus[ellipsoid[i]].shape[1] * bonus[ellipsoid[i]].shape[2]);
-          double reqj = std::cbrt(bonus[ellipsoid[j]].shape[0] * bonus[ellipsoid[j]].shape[1] * bonus[ellipsoid[j]].shape[2]);
-          MathExtra::scaleadd3(reqj / (reqi + reqj), x[i], reqi / (reqi + reqj), x[j], X0);
-          //   MathExtra::scaleadd3(radj / radsum, x[i], radi /radsum, x[j], X0);
-          for (int iter_ig = 1 ; iter_ig <= NUMSTEP_INITIAL_GUESS ; iter_ig++) {
-            X0[3] = 0.0; // Lagrange multiplier mu^2 initially zero
-            double frac = iter_ig / double(NUMSTEP_INITIAL_GUESS);
-            shapei[0] = shapei[1] = shapei[2] = reqi;
-            shapej[0] = shapej[1] = shapej[2] = reqj;
-            MathExtra::scaleadd3(1.0-frac, shapei, frac, bonus[ellipsoid[i]].shape, shapei);
-            MathExtra::scaleadd3(1.0-frac, shapej, frac, bonus[ellipsoid[j]].shape, shapej);
-            if (bonus[ellipsoid[i]].flag_super) { // not a big time save
-              blocki[0] = 2.0 + frac * (bonus[ellipsoid[i]].block[0] - 2.0);
-              blocki[1] = 2.0 + frac * (bonus[ellipsoid[i]].block[1] - 2.0);
-            }
-            if (bonus[ellipsoid[j]].flag_super) {
-              blockj[0] = 2.0 + frac * (bonus[ellipsoid[j]].block[0] - 2.0);
-              blockj[1] = 2.0 + frac * (bonus[ellipsoid[j]].block[1] - 2.0);
-            }
-            int status = MathExtraSuperellipsoids::determine_contact_point(x[i], Ri, shapei, blocki, x[j], Rj, shapej, blockj, X0, nij);
-            if (status == 0)
-              touching = true;
-            else if(status == 5)
-              touching = false;
-            else
-              error->all(FLERR, "Ellipsoid contact detection failed with status {} ", status);
           }
         }
       }
@@ -283,11 +307,12 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         // TODO: Compute the force between the 2 superquadrics
         MathExtra::copy3(X0, prev_cp);
 
-        // TODO: Everything below must be changed
-
-        r = sqrt(rsq);
-        rinv = 1.0 / r;
-        rsqinv = 1.0 / rsq;
+        double nji[3] = { -nij[0], -nij[1], -nij[2] };
+        // compute overlap depth along normal direction for each grain
+        // overlap is positive for both grains
+        overlap1 = 0.0, overlap2 = 0.0;
+        MathExtraSuperellipsoids::compute_overlap_distance(shapei, blocki, Ri, X0, nij, x[i], overlap1);
+        MathExtraSuperellipsoids::compute_overlap_distance(shapej, blockj, Rj, X0, nji, x[j], overlap2);
 
         // branch vectors 
         double cr1[3], cr2[3];
@@ -442,7 +467,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
           torque[j][2] -= tor3;
         }
 
-        if (evflag) ev_tally_xyz(i, j, nlocal, newton_pair, 0.0, 0.0, fx, fy, fz, delx, dely, delz);
+        if (evflag) ev_tally_xyz(i, j, nlocal, newton_pair, 0.0, 0.0, fx, fy, fz, delx, dely, delz); // need to check this, it is for virial stress, but needs some tweaking for non-spherical particles
       }
     }
   }
