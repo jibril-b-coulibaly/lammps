@@ -641,48 +641,88 @@ double stable_shape_and_gradients_local_ellipsoid(const double* xlocal, const do
   return 0.5 * (grad[0]*xlocal[0] + grad[1]*xlocal[1] + grad[2]*xlocal[2]) - 1.0;
 }
 
-// Newton Rapson method to find the surface point from the contact point given the normal
-// TODO : implement this function
-// void find_surface_point(
-//   const double* shape, const double* blockiness, const double* quat,
-//   const double* global_point, const double* global_normal) {
-//   double local_point[3], local_normal[3];
-//   global2local_vector(global_point, quat, local_point);
-//   global2local_vector(global_normal, quat, local_normal);
-//   double overlap = 0.0;
-//   double tol = 1e-8;
-//   unsigned int max_iter = 100;
-//   double local_f;
-//   double local_grad[3];
+// Newton Rapson method to find the overlap distance from the contact point given the normal
+void find_overlap_distance(
+  const double* shape, const double* block, const double* quat,
+  const double* global_point, const double* global_normal, double& overlap)
+   {
+  double local_point[3], local_normal[3];
+  global2local_vector(global_point, quat, local_point);
+  global2local_vector(global_normal, quat, local_normal);
+  double local_f;
+  double local_grad[3];
+  
+  // elliposid analytical solution, might need to double check the math 
+  // there is an easy way to find this by parametrizing the straight line as
+  // X0 + t * n anf then substituting in the ellipsoid equation  for x, y, z
+  // this results in a quadratic equation and we take the positive solution since
+  // we are taking the outward facing normal for each grain
+
+  if (block[0] == 2.0 && block[1] == 2.0){
+
+    double a_inv2 = 1.0 / (shape[0] * shape[0]);
+    double b_inv2 = 1.0 / (shape[1] * shape[1]);
+    double c_inv2 = 1.0 / (shape[2] * shape[2]);
+
+    // Coefficients for At^2 + Bt + C = 0
+    double A = (local_normal[0] * local_normal[0] * a_inv2) +
+               (local_normal[1] * local_normal[1] * b_inv2) +
+               (local_normal[2] * local_normal[2] * c_inv2);
+
+    double B = 2.0 * ( (local_point[0] * local_normal[0] * a_inv2) +
+                     (local_point[1] * local_normal[1] * b_inv2) +
+                     (local_point[2] * local_normal[2] * c_inv2) );
+
+    double C = (local_point[0] * local_point[0] * a_inv2) +
+               (local_point[1] * local_point[1] * b_inv2) +
+               (local_point[2] * local_point[2] * c_inv2) - 1.0;
+
+    // Discriminant
+    double delta = B*B - 4.0*A*C;
+
+    // Clamp delta to zero just in case numerical noise makes it negative
+    if (delta < 0.0) delta = 0.0; 
+    double t = (-B + std::sqrt(delta)) / (2.0 * A);
+
+
+    } else {
+      // --- Superquadric Case (Newton-Raphson on Distance Estimator) ---
     
-
-//   for (unsigned int iter = 0; iter < max_iter; iter++) {
+    double t = 0.0; // Distance along the normal
+    double current_p[3];
+    double val;
+    double tol = 1e-8;
+    unsigned int max_iter = 20;
     
-//     if (blockiness[0] == 2.0 && blockiness[1] == 2.0) {
-//       local_f = stable_shape_and_gradients_local_ellipsoid(local_point, shape, local_grad);
-//     } else if (std::fabs(blockiness[0] - blockiness[1]) < 1e-3) {
-//       local_f = stable_shape_and_gradient_local_n1equaln2(local_point, shape, blockiness[0], local_grad);
-//     } else {
-//       local_f = stable_shape_and_gradient_local_superquad(local_point, shape, blockiness,  local_grad);
-//     }
+    for (unsigned int iter = 0; iter < max_iter; iter++) {
+        // Update current search position: P = Start + t * Normal
+        current_p[0] = local_point[0] + t * local_normal[0];
+        current_p[1] = local_point[1] + t * local_normal[1];
+        current_p[2] = local_point[2] + t * local_normal[2];
 
-//     if (std::fabs(local_f) < tol) {
-//       break;
-//     }
+        // Calculate Distance Estimator value and Gradient
+        if (std::fabs(block[0] - block[1]) < 1e-6) {
+            val = stable_shape_and_gradient_local_n1equaln2(current_p, shape, block[0], local_grad);
+        } else {
+            val = stable_shape_and_gradient_local_superquad(current_p, shape, block, local_grad);
+        }
 
+        // Convergence Check
+        if (std::fabs(val) < tol) break;
 
+        // Newton Step
+        double slope = local_grad[0] * local_normal[0] + 
+                       local_grad[1] * local_normal[1] + 
+                       local_grad[2] * local_normal[2];
+
+        // Safety check to prevent divide-by-zero if ray grazes surface
+        if (std::fabs(slope) < 1e-12) break;
+
+        t -= val / slope;
+    }
     
-//     double denom = MathExtra::dot3(local_grad, local_normal);
-//     if (std::fabs(denom) < 1e-12) {
-//       // Avoid division by zero
-//       break;
-//     }
-//     double delta = local_f / denom;
-//     for (int i = 0; i < 3; i++) {
-//       local_point[i] -= delta * local_normal[i];
-//     }
-//   }
-
-
+    overlap = t;
+  }
+} 
 
 } // namespace MathExtraSuperellipsoids
