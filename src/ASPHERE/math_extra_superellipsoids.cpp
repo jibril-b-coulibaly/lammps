@@ -290,7 +290,7 @@ double shape_and_derivatives_local_superquad(const double* xlocal, const double*
 
   double nu = (x_a_pow_n2_m1 * x_a) + (y_b_pow_n2_m1 * y_b);
   double nu_pow_n1_n2_m2 = std::pow(nu, n1/n2 - 2.0);
-  double nu_pow_n1_n2_m1 = nu_pow_n1_n2_m1 * nu;
+  double nu_pow_n1_n2_m1 = nu_pow_n1_n2_m2 * nu;
 
   double z_c_pow_n1_m2 = std::pow(z_c, n1 -2.0);
   double z_c_pow_n1_m1 = z_c_pow_n1_m2 / z_c;
@@ -549,5 +549,140 @@ int determine_flag(const double* block) {
     flag = 1;
   return flag;
 }
+
+// Functions to compute shape function and gradient only when called for newton method
+// to avoid computing hessian when not needed and having smoother landscape for the line search
+// General case for n1 != n2 > 2
+double stable_shape_and_gradient_local_superquad(const double* xlocal, const double* shape, const double* block, double* grad) {
+  double a_inv = 1.0 / shape[0];
+  double b_inv = 1.0 / shape[1];
+  double c_inv = 1.0 / shape[2];
+  double x_a = std::fabs(xlocal[0] * a_inv);
+  double y_b = std::fabs(xlocal[1] * b_inv);
+  double z_c = std::fabs(xlocal[2] * c_inv);
+  double n1 = block[0];
+  double n2 = block[1];
+  double x_a_pow_n2_m2 = std::pow(x_a, n2 - 2.0);
+  double x_a_pow_n2_m1 = x_a_pow_n2_m2 * x_a;
+  double y_b_pow_n2_m2 = std::pow(y_b, n2 - 2.0);
+  double y_b_pow_n2_m1 = y_b_pow_n2_m2 * y_b;
+
+  double nu = (x_a_pow_n2_m1 * x_a) + (y_b_pow_n2_m1 * y_b);
+  double nu_pow_n1_n2_m2 = std::pow(nu, n1/n2 - 2.0);
+  double nu_pow_n1_n2_m1 = nu_pow_n1_n2_m2 * nu;
+
+  double z_c_pow_n1_m2 = std::pow(z_c, n1 -2.0);
+  double z_c_pow_n1_m1 = z_c_pow_n1_m2 / z_c;
+
+  // Equation (14)
+  double signx = xlocal[0] > 0.0 ? 1.0 : -1.0;
+  double signy = xlocal[1] > 0.0 ? 1.0 : -1.0;
+  double signz = xlocal[2] > 0.0 ? 1.0 : -1.0;
+  grad[0] = n1 * a_inv * x_a_pow_n2_m1 * nu_pow_n1_n2_m1 * signx;
+  grad[1] = n1 * b_inv * y_b_pow_n2_m1 * nu_pow_n1_n2_m1 * signy;
+  grad[2] = n1 * c_inv * z_c_pow_n1_m1 * signz;
+
+  double F = (nu_pow_n1_n2_m1 * nu) + (z_c_pow_n1_m1 * z_c);
+
+  double scale_factor = std::pow(F, 1.0/n1 -1.0) / n1;
+
+  grad[0] *= scale_factor;
+  grad[1] *= scale_factor;
+  grad[2] *= scale_factor;
+
+  return (nu_pow_n1_n2_m1 * nu) + (z_c_pow_n1_m1 * z_c) - 1.0;
+}
+
+// Special case for n2 = n2 = n > 2
+double stable_shape_and_gradient_local_n1equaln2(const double* xlocal, const double* shape, const double n, double* grad) {
+  double a_inv = 1.0 / shape[0];
+  double b_inv = 1.0 / shape[1];
+  double c_inv = 1.0 / shape[2];
+  double x_a = std::fabs(xlocal[0] * a_inv);
+  double y_b = std::fabs(xlocal[1] * b_inv);
+  double z_c = std::fabs(xlocal[2] * c_inv);
+  double x_a_pow_n_m2 = std::pow(x_a, n - 2.0);
+  double x_a_pow_n_m1 = x_a_pow_n_m2 * x_a;
+  double y_b_pow_n_m2 = std::pow(y_b, n - 2.0);
+  double y_b_pow_n_m1 = y_b_pow_n_m2 * y_b;
+  double z_c_pow_n_m2 = std::pow(z_c, n - 2.0);
+  double z_c_pow_n_m1 = z_c_pow_n_m2 * z_c;
+
+  // Equation (14)
+  double signx = xlocal[0] > 0.0 ? 1.0 : -1.0;
+  double signy = xlocal[1] > 0.0 ? 1.0 : -1.0;
+  double signz = xlocal[2] > 0.0 ? 1.0 : -1.0;
+  grad[0] = n * a_inv * x_a_pow_n_m1 * signx;
+  grad[1] = n * b_inv * y_b_pow_n_m1 * signy;
+  grad[2] = n * c_inv * z_c_pow_n_m1 * signz;
+
+  double F = (x_a_pow_n_m1 * x_a) + (y_b_pow_n_m1 * y_b) + (z_c_pow_n_m1 * z_c);
+  double scale_factor = std::pow(F, 1.0/n -1.0) / n;
+
+  grad[0] *= scale_factor;
+  grad[1] *= scale_factor;
+  grad[2] *= scale_factor;
+
+  return (x_a_pow_n_m1 * x_a) + (y_b_pow_n_m1 * y_b) + (z_c_pow_n_m1 * z_c) - 1.0;
+}
+
+
+// Special case for n1 = n2 = 2
+double stable_shape_and_gradients_local_ellipsoid(const double* xlocal, const double* shape, double* grad) {
+  double a = 2.0 / (shape[0] * shape[0]);
+  double b = 2.0 / (shape[1] * shape[1]);
+  double c = 2.0 / (shape[2] * shape[2]);
+
+  // Equation (14) simplified for n1 = n2 = 2
+  grad[0] = a * xlocal[0];
+  grad[1] = b * xlocal[1];
+  grad[2] = c * xlocal[2];
+
+  return 0.5 * (grad[0]*xlocal[0] + grad[1]*xlocal[1] + grad[2]*xlocal[2]) - 1.0;
+}
+
+// Newton Rapson method to find the surface point from the contact point given the normal
+// TODO : implement this function
+// void find_surface_point(
+//   const double* shape, const double* blockiness, const double* quat,
+//   const double* global_point, const double* global_normal) {
+//   double local_point[3], local_normal[3];
+//   global2local_vector(global_point, quat, local_point);
+//   global2local_vector(global_normal, quat, local_normal);
+//   double overlap = 0.0;
+//   double tol = 1e-8;
+//   unsigned int max_iter = 100;
+//   double local_f;
+//   double local_grad[3];
+    
+
+//   for (unsigned int iter = 0; iter < max_iter; iter++) {
+    
+//     if (blockiness[0] == 2.0 && blockiness[1] == 2.0) {
+//       local_f = stable_shape_and_gradients_local_ellipsoid(local_point, shape, local_grad);
+//     } else if (std::fabs(blockiness[0] - blockiness[1]) < 1e-3) {
+//       local_f = stable_shape_and_gradient_local_n1equaln2(local_point, shape, blockiness[0], local_grad);
+//     } else {
+//       local_f = stable_shape_and_gradient_local_superquad(local_point, shape, blockiness,  local_grad);
+//     }
+
+//     if (std::fabs(local_f) < tol) {
+//       break;
+//     }
+
+
+    
+//     double denom = MathExtra::dot3(local_grad, local_normal);
+//     if (std::fabs(denom) < 1e-12) {
+//       // Avoid division by zero
+//       break;
+//     }
+//     double delta = local_f / denom;
+//     for (int i = 0; i < 3; i++) {
+//       local_point[i] -= delta * local_normal[i];
+//     }
+//   }
+
+
 
 } // namespace MathExtraSuperellipsoids

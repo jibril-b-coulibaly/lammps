@@ -69,6 +69,11 @@ namespace MathExtraSuperellipsoids {
                               const double* xcj, const double Rj[3][3], const double* shapej, const double* blockj,
                               double* X0, double* nij);
   int determine_flag(const double* block);
+ 
+  // functions to compute shape function and gradient only when called for newton method
+  double stable_shape_and_gradient_local_superquad(const double* xlocal, const double* shape, const double* block, double* grad);
+  double stable_shape_and_gradient_local_n1equaln2(const double* xlocal, const double* shape, const double n, double* grad);
+  double stable_shape_and_gradient_local_ellipsoid(const double* xlocal, const double* shape, double* grad);
 
 };
 
