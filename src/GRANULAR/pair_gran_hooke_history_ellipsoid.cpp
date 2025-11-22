@@ -120,7 +120,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
   double quat1, quat2, quat3, quat4;
   double block1, block2;
 
-  double X0[4], nij[3], shapei[3], blocki[3], shapej[3], blockj[3], Ri[3][3], Rj[3][3];
+  double X0[4], nij[3], shapei[3], blocki[3], shapej[3], blockj[3], Ri[3][3], Rj[3][3], overlap1, overlap2;
   // TODO: Maybe we can make flag_super of the grain an int instead, to cimplify when n1 = n2 ?
   int flagi, flagj; // 0 : ellipsoid, 1 : equal exponents n1=n2, 2: general super-ellipsoid n1 >2, n2>2, n1!=n2
 
@@ -225,7 +225,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
           // TODO: move contact point with rigid body motion of the pair ?
           //       not sure if enough information to do that
           MathExtra::copy3(prev_cp, X0);
-          X0[3] = 0.0; // Lagrange multiplier mu^2 initially zero
+          X0[3] = 1.0; // Lagrange multiplier mu^2 initially one (makes the Newton more stable in continued contact)
           int status = MathExtraSuperellipsoids::determine_contact_point(x[i], Ri, shapei, blocki, x[j], Rj, shapej, blockj, X0, nij);
           if (status == 0)
             touching = true;
@@ -289,36 +289,56 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         rinv = 1.0 / r;
         rsqinv = 1.0 / rsq;
 
-        // relative translational velocity
+        // branch vectors 
+        double cr1[3], cr2[3];
+        MathExtra::sub3(X0, x[i], cr1);
+        MathExtra::sub3(X0, x[j], cr2);
 
-        vr1 = v[i][0] - v[j][0];
-        vr2 = v[i][1] - v[j][1];
-        vr3 = v[i][2] - v[j][2];
+        // we need to take the cross product of omega
+        double omega_cross_r1[3], omega_cross_r2[3];
+        MathExtra::cross3(omega[i], cr1, omega_cross_r1);
+        MathExtra::cross3(omega[j], cr2, omega_cross_r2);
+
+        // relative translational velocity 
+        // compute directly the sum of relative translational velocity at contact point
+        // since rotational velocity contribution is different for superellipsoids
+        double cv1[3], cv2[3];
+
+        cv1[0] = v[i][0] + omega_cross_r1[0];
+        cv1[1] = v[i][1] + omega_cross_r1[1];
+        cv1[2] = v[i][2] + omega_cross_r1[2];
+
+        cv2[0] = v[j][0] + omega_cross_r2[0];
+        cv2[1] = v[j][1] + omega_cross_r2[1];
+        cv2[2] = v[j][2] + omega_cross_r2[2];
+
+        // total relavtive velocity at contact point
+        vr1 = cv1[0] - cv2[0];
+        vr2 = cv1[1] - cv2[1];
+        vr3 = cv1[2] - cv2[2];
 
         // normal component
 
-        vnnr = vr1 * delx + vr2 * dely + vr3 * delz;
-        vn1 = delx * vnnr * rsqinv;
-        vn2 = dely * vnnr * rsqinv;
-        vn3 = delz * vnnr * rsqinv;
+        vn1 = nij[0] * vr1; // dot product 
+        vn2 = nij[1] * vr2;
+        vn3 = nij[2] * vr3;
+
+        vnnr = vr1 * nij[0] + vr2 * nij[1] + vr3 * nij[2]; // magnitu
 
         // tangential component
 
-        vt1 = vr1 - vn1;
-        vt2 = vr2 - vn2;
-        vt3 = vr3 - vn3;
+        vtr1 = vr1 - vnnr * nij[0];
+        vtr2 = vr2 - vnnr * nij[1];
+        vtr3 = vr3 - vnnr * nij[2];
 
-        // relative rotational velocity
-
-        wr1 = (radi * omega[i][0] + radj * omega[j][0]) * rinv;
-        wr2 = (radi * omega[i][1] + radj * omega[j][1]) * rinv;
-        wr3 = (radi * omega[i][2] + radj * omega[j][2]) * rinv;
+        vrel = vtr1 * vtr1 + vtr2 * vtr2 + vtr3 * vtr3;
+        vrel = sqrt(vrel);
 
         // meff = effective mass of pair of particles
         // if I or J part of rigid body, use body mass
         // if I or J is frozen, meff is other particle
 
-        mi = rmass[i];
+        mi = rmass[i]; // JB I assume this is the mass of particle i, need to check
         mj = rmass[j];
         if (fix_rigid) {
           if (mass_rigid[i] > 0.0) mi = mass_rigid[i];
@@ -331,17 +351,9 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
 
         // normal forces = Hookian contact + normal velocity damping
 
-        damp = meff * gamman * vnnr * rsqinv;
-        ccel = kn * (radsum - r) * rinv - damp;
+        damp = meff * gamman * vnnr;
+        ccel = kn * (overlap1 + overlap2) - damp; // assuming we get the overlap depth
         if (limit_damping && (ccel < 0.0)) ccel = 0.0;
-
-        // relative velocities
-
-        vtr1 = vt1 - (delz * wr2 - dely * wr3);
-        vtr2 = vt2 - (delx * wr3 - delz * wr1);
-        vtr3 = vt3 - (dely * wr1 - delx * wr2);
-        vrel = vtr1 * vtr1 + vtr2 * vtr2 + vtr3 * vtr3;
-        vrel = sqrt(vrel);
 
         // shear history effects
 
@@ -359,11 +371,10 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
 
           // rotate shear displacements
 
-          rsht = shear[0] * delx + shear[1] * dely + shear[2] * delz;
-          rsht *= rsqinv;
-          shear[0] -= rsht * delx;
-          shear[1] -= rsht * dely;
-          shear[2] -= rsht * delz;
+          rsht = shear[0] * nij[0] + shear[1] * nij[1] + shear[2] * nij[2];
+          shear[0] -= rsht * nij[0];
+          shear[1] -= rsht * nij[1];
+          shear[2] -= rsht * nij[2];
         }
 
         // tangential forces = shear + tangential velocity damping
@@ -375,7 +386,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         // rescale frictional displacements and forces if needed
 
         fs = sqrt(fs1 * fs1 + fs2 * fs2 + fs3 * fs3);
-        fn = xmu * fabs(ccel * r);
+        fn = xmu * fabs(ccel);
 
         if (fs > fn) {
           if (shrmag != 0.0) {
@@ -394,33 +405,41 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
 
         // forces & torques
 
-        fx = delx * ccel + fs1;
-        fy = dely * ccel + fs2;
-        fz = delz * ccel + fs3;
-        fx *= factor_lj;
+        fx = nij[0] * ccel + fs1;
+        fy = nij[1] * ccel + fs2;
+        fz = nij[2] * ccel + fs3;
+        fx *= factor_lj; // I think factor lj is just 1 except for special bonds
         fy *= factor_lj;
         fz *= factor_lj;
         f[i][0] += fx;
         f[i][1] += fy;
         f[i][2] += fz;
 
-        tor1 = rinv * (dely * fs3 - delz * fs2);
-        tor2 = rinv * (delz * fs1 - delx * fs3);
-        tor3 = rinv * (delx * fs2 - dely * fs1);
+        // torques are cross prodcuts of branch vector with the entire force at contact point
+
+        tor1 = cr1[1] * fz - cr1[2] * fy;
+        tor2 = cr1[2] * fx - cr1[0] * fz;
+        tor3 = cr1[0] * fy - cr1[1] * fx; 
+
         tor1 *= factor_lj;
         tor2 *= factor_lj;
         tor3 *= factor_lj;
-        torque[i][0] -= radi * tor1;
-        torque[i][1] -= radi * tor2;
-        torque[i][2] -= radi * tor3;
+        torque[i][0] += tor1;
+        torque[i][1] += tor2;
+        torque[i][2] += tor3;
 
         if (newton_pair || j < nlocal) {
           f[j][0] -= fx;
           f[j][1] -= fy;
           f[j][2] -= fz;
-          torque[j][0] -= radj * tor1;
-          torque[j][1] -= radj * tor2;
-          torque[j][2] -= radj * tor3;
+          
+          tor1 = cr2[1] * fz - cr2[2] * fy;
+          tor2 = cr2[2] * fx - cr2[0] * fz;
+          tor3 = cr2[0] * fy - cr2[1] * fx; 
+
+          torque[j][0] -= tor1;
+          torque[j][1] -= tor2;
+          torque[j][2] -= tor3;
         }
 
         if (evflag) ev_tally_xyz(i, j, nlocal, newton_pair, 0.0, 0.0, fx, fy, fz, delx, dely, delz);
