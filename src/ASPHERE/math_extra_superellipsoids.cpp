@@ -296,7 +296,7 @@ double shape_and_derivatives_local_superquad(const double* xlocal, const double*
   double nu_pow_n1_n2_m1 = nu_pow_n1_n2_m2 * nu;
 
   double z_c_pow_n1_m2 = std::pow(z_c, n1 -2.0);
-  double z_c_pow_n1_m1 = z_c_pow_n1_m2 / z_c;
+  double z_c_pow_n1_m1 = z_c_pow_n1_m2 * z_c;
 
   // Equation (14)
   double signx = xlocal[0] > 0.0 ? 1.0 : -1.0;
@@ -575,7 +575,7 @@ double stable_shape_and_gradient_local_superquad(const double* xlocal, const dou
   double nu_pow_n1_n2_m1 = nu_pow_n1_n2_m2 * nu;
 
   double z_c_pow_n1_m2 = std::pow(z_c, n1 -2.0);
-  double z_c_pow_n1_m1 = z_c_pow_n1_m2 / z_c;
+  double z_c_pow_n1_m1 = z_c_pow_n1_m2 * z_c;
 
   // Equation (14)
   double signx = xlocal[0] > 0.0 ? 1.0 : -1.0;
