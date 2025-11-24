@@ -104,6 +104,8 @@ class ComputePropertyAtom : public Compute {
   void pack_shapex(int);
   void pack_shapey(int);
   void pack_shapez(int);
+  void pack_block1(int);
+  void pack_block2(int);
   void pack_quatw(int);
   void pack_quati(int);
   void pack_quatj(int);

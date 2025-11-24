@@ -239,6 +239,14 @@ ComputePropertyAtom::ComputePropertyAtom(LAMMPS *lmp, int narg, char **arg) :
         error->all(FLERR,"Compute property/atom {} requires atom style ellipsoid", arg[iarg]);
       pack_choice[i] = &ComputePropertyAtom::pack_shapez;
 
+    } else if (strcmp(arg[iarg],"block1") == 0) {
+      if (!avec_ellipsoid) 
+        error->all(FLERR,"Compute property/atom {} requires atom style ellipsoid with super flag", arg[iarg]);
+      pack_choice[i] = &ComputePropertyAtom::pack_block1;
+    } else if (strcmp(arg[iarg],"block2") == 0) {
+      if (!avec_ellipsoid) 
+        error->all(FLERR,"Compute property/atom {} requires atom style ellipsoid with super flag", arg[iarg]);
+      pack_choice[i] = &ComputePropertyAtom::pack_block2;
     } else if (strcmp(arg[iarg],"quatw") == 0) {
       if (!avec_ellipsoid && !avec_body && !atom->quat_flag)
         error->all(FLERR,"Compute property/atom {} is not available", arg[iarg]);
@@ -1359,6 +1367,39 @@ void ComputePropertyAtom::pack_shapez(int n)
   for (int i = 0; i < nlocal; i++) {
     if ((mask[i] & groupbit) && ellipsoid[i] >= 0)
       buf[n] = 2.0*bonus[ellipsoid[i]].shape[2];
+    else buf[n] = 1.0;
+    n += nvalues;
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+
+void ComputePropertyAtom::pack_block1(int n)
+{
+  AtomVecEllipsoid::Bonus *bonus = avec_ellipsoid->bonus;
+  int *ellipsoid = atom->ellipsoid;
+  int *mask = atom->mask;
+  int nlocal = atom->nlocal;
+
+  for (int i = 0; i < nlocal; i++) {
+    if ((mask[i] & groupbit) && ellipsoid[i] >= 0)
+      buf[n] = bonus[ellipsoid[i]].block[0];
+    else buf[n] = 1.0;
+    n += nvalues;
+  }
+}
+/* ---------------------------------------------------------------------- */
+
+void ComputePropertyAtom::pack_block2(int n)
+{
+  AtomVecEllipsoid::Bonus *bonus = avec_ellipsoid->bonus;
+  int *ellipsoid = atom->ellipsoid;
+  int *mask = atom->mask;
+  int nlocal = atom->nlocal;
+
+  for (int i = 0; i < nlocal; i++) {
+    if ((mask[i] & groupbit) && ellipsoid[i] >= 0)
+      buf[n] = bonus[ellipsoid[i]].block[1];
     else buf[n] = 1.0;
     n += nvalues;
   }
