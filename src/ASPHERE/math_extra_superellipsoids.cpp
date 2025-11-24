@@ -591,7 +591,7 @@ double stable_shape_and_gradient_local_superquad(const double* xlocal, const dou
   grad[1] *= scale_factor;
   grad[2] *= scale_factor;
 
-  return (nu_pow_n1_n2_m1 * nu) + (z_c_pow_n1_m1 * z_c) - 1.0;
+  return std::pow(F, 1.0/n1) - 1.0;
 }
 
 // Special case for n2 = n2 = n > 2
@@ -624,7 +624,7 @@ double stable_shape_and_gradient_local_n1equaln2(const double* xlocal, const dou
   grad[1] *= scale_factor;
   grad[2] *= scale_factor;
 
-  return (x_a_pow_n_m1 * x_a) + (y_b_pow_n_m1 * y_b) + (z_c_pow_n_m1 * z_c) - 1.0;
+  return std::pow(F, 1.0/n) - 1.0;
 }
 
 
@@ -639,7 +639,14 @@ double stable_shape_and_gradients_local_ellipsoid(const double* xlocal, const do
   grad[1] = b * xlocal[1];
   grad[2] = c * xlocal[2];
 
-  return 0.5 * (grad[0]*xlocal[0] + grad[1]*xlocal[1] + grad[2]*xlocal[2]) - 1.0;
+  double F = 0.5 * (grad[0]*xlocal[0] + grad[1]*xlocal[1] + grad[2]*xlocal[2]);
+  double scale_factor = std::sqrt(F) / 2.0;
+  
+  grad[0] *= scale_factor;
+  grad[1] *= scale_factor;
+  grad[2] *= scale_factor;
+
+  return std::sqrt(F) - 1.0;
 }
 
 // Newton Rapson method to find the overlap distance from the contact point given the normal
