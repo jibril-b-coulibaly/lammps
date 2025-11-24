@@ -120,7 +120,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
   double quat1, quat2, quat3, quat4;
   double block1, block2;
 
-  double X0[4], nij[3], shapei[3], blocki[3], shapej[3], blockj[3], Ri[3][3], Rj[3][3], overlap1, overlap2;
+  double X0[4], nij[3], shapei[3], blocki[3], shapej[3], blockj[3], Ri[3][3], Rj[3][3], overlap1, overlap2, omegai[3], omegaj[3];
   // TODO: Maybe we can make flag_super of the grain an int instead, to cimplify when n1 = n2 ?
   int flagi, flagj; // 0 : ellipsoid, 1 : equal exponents n1=n2, 2: general super-ellipsoid n1 >2, n2>2, n1!=n2
 
@@ -154,7 +154,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
   double **x = atom->x;
   double **v = atom->v;
   double **f = atom->f;
-  double **omega = atom->omega;
+  double **angmom = atom->angmom;
   double **torque = atom->torque;
   double *radius = atom->radius;
   double *rmass = atom->rmass;
@@ -227,9 +227,8 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
          // this might need testing
          bool high_aspect_ratio = (ar_i > 1.5 || ar_j > 1.5); 
          MathExtra::quat_to_mat(bonus[ellipsoid[i]].quat, Ri);
-         // TODO: Not sure if j is accessible if ghost, radius is, so bonus props must have been communicated on ghost atoms I think
          MathExtra::quat_to_mat(bonus[ellipsoid[j]].quat, Rj);
-          
+
          if (high_aspect_ratio){
           // check the bounding box
           bool obb_separate = MathExtraSuperellipsoids::check_oriented_bounding_boxes(
@@ -321,9 +320,18 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         MathExtra::sub3(X0, x[j], cr2);
 
         // we need to take the cross product of omega
+
+        double ex_space[3],ey_space[3],ez_space[3];
+        MathExtra::q_to_exyz(bonus[ellipsoid[i]].quat,ex_space,ey_space,ez_space);
+        MathExtra::angmom_to_omega(angmom[i],ex_space,ey_space,ez_space,
+                                   bonus[ellipsoid[i]].inertia,omegai);
+        MathExtra::q_to_exyz(bonus[ellipsoid[j]].quat,ex_space,ey_space,ez_space);
+        MathExtra::angmom_to_omega(angmom[j],ex_space,ey_space,ez_space,
+                                   bonus[ellipsoid[j]].inertia,omegaj);
+
         double omega_cross_r1[3], omega_cross_r2[3];
-        MathExtra::cross3(omega[i], cr1, omega_cross_r1);
-        MathExtra::cross3(omega[j], cr2, omega_cross_r2);
+        MathExtra::cross3(omegai, cr1, omega_cross_r1);
+        MathExtra::cross3(omegaj, cr2, omega_cross_r2);
 
         // relative translational velocity 
         // compute directly the sum of relative translational velocity at contact point
@@ -757,6 +765,7 @@ void PairGranHookeHistoryEllipsoid::reset_dt()
 
 /* ---------------------------------------------------------------------- */
 
+// TODO: implement the single() function for the super-ellipsoid
 double PairGranHookeHistoryEllipsoid::single(int i, int j, int /*itype*/, int /*jtype*/, double rsq,
                                     double /*factor_coul*/, double /*factor_lj*/, double &fforce)
 {
