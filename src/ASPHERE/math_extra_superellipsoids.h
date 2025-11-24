@@ -74,7 +74,7 @@ namespace MathExtraSuperellipsoids {
   double stable_shape_and_gradient_local_superquad(const double* xlocal, const double* shape, const double* block, double* grad);
   double stable_shape_and_gradient_local_n1equaln2(const double* xlocal, const double* shape, const double n, double* grad);
   double stable_shape_and_gradient_local_ellipsoid(const double* xlocal, const double* shape, double* grad);
-  void compute_overlap_distance(const double* shape, const double* block, const double Rot[3][3], const double* global_point, const double* global_normal, const double* center, double& overlap);
+  double compute_overlap_distance(const double* shape, const double* block, const double Rot[3][3], const int flag, const double* global_point, const double* global_normal, const double* center);
 
 };
 

@@ -241,6 +241,8 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         }
       }
 
+      flagi = MathExtraSuperellipsoids::determine_flag(blocki); // TODO: actually pass those and use them in contact point instead of recomputing
+      flagj = MathExtraSuperellipsoids::determine_flag(blockj); // TODO: actually pass those and use them in contact point instead of recomputing
       // Super-ellipsoid contact detection between atoms i and j
       if (touch[jj] == 1  && touching) {
         // Continued contact: use grain true shape and last contact point
@@ -310,9 +312,8 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         double nji[3] = { -nij[0], -nij[1], -nij[2] };
         // compute overlap depth along normal direction for each grain
         // overlap is positive for both grains
-        overlap1 = 0.0, overlap2 = 0.0;
-        MathExtraSuperellipsoids::compute_overlap_distance(shapei, blocki, Ri, X0, nij, x[i], overlap1);
-        MathExtraSuperellipsoids::compute_overlap_distance(shapej, blockj, Rj, X0, nji, x[j], overlap2);
+        overlap1 = MathExtraSuperellipsoids::compute_overlap_distance(shapei, blocki, Ri, flagi, X0, nij, x[i]);
+        overlap2 = MathExtraSuperellipsoids::compute_overlap_distance(shapej, blockj, Rj, flagj, X0, nji, x[j]); // TODO: Jibril: I wonder if we'd get the correct, but negative overlap if we picked nji, which might be cheaper than computing nji
 
         // branch vectors 
         double cr1[3], cr2[3];

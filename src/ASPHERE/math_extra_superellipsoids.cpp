@@ -39,6 +39,9 @@ static constexpr double CONVERGENCE_NEWTON = 1e-6;
 static constexpr int ITERMAX_LINESEARCH = 10;
 static constexpr double PARAMETER_LINESEARCH = 1e-4;
 static constexpr double CUTBACK_LINESEARCH = 0.5;
+static constexpr double CONVERGENCE_OVERLAP = 1e-8;
+static constexpr unsigned int ITERMAX_OVERLAP = 20;
+static constexpr double MINSLOPE_OVERLAP = 1e-12;
 
 /* ----------------------------------------------------------------------
    beta function B(x,y) = Gamma(x) * Gamma(y) / Gamma(x+y)
@@ -642,13 +645,13 @@ double stable_shape_and_gradients_local_ellipsoid(const double* xlocal, const do
 }
 
 // Newton Rapson method to find the overlap distance from the contact point given the normal
-void compute_overlap_distance(
-  const double* shape, const double* block, const double Rot[3][3],
+double compute_overlap_distance(
+  const double* shape, const double* block, const double Rot[3][3], const int flag,
   const double* global_point, const double* global_normal,
-  const double* center, double& overlap)
-   {
+  const double* center) {
   double local_point[3], local_normal[3];
   double del[3];
+  double overlap;
   MathExtra::sub3(global_point, center, del);  // bring origin to 0.0
   MathExtra::transpose_matvec(Rot, del, local_point); 
   MathExtra::transpose_matvec(Rot, global_normal, local_normal);
@@ -662,7 +665,7 @@ void compute_overlap_distance(
   // this results in a quadratic equation and we take the positive solution since
   // we are taking the outward facing normal for each grain
 
-  if (block[0] == 2.0 && block[1] == 2.0){
+  if (flag == 0){
 
     double a_inv2 = 1.0 / (shape[0] * shape[0]);
     double b_inv2 = 1.0 / (shape[1] * shape[1]);
@@ -686,47 +689,41 @@ void compute_overlap_distance(
 
     // Clamp delta to zero just in case numerical noise makes it negative
     if (delta < 0.0) delta = 0.0; 
-    double t = (-B + std::sqrt(delta)) / (2.0 * A);
-
-
-    } else {
+    overlap = (-B + std::sqrt(delta)) / (2.0 * A);
+  } else {
       // --- Superquadric Case (Newton-Raphson on Distance Estimator) ---
     
-    double t = 0.0; // Distance along the normal
+    overlap = 0.0; // Distance along the normal
     double current_p[3];
     double val;
-    double tol = 1e-8;
-    unsigned int max_iter = 20;
-    
-    for (unsigned int iter = 0; iter < max_iter; iter++) {
-        // Update current search position: P = Start + t * Normal
-        current_p[0] = local_point[0] + t * local_normal[0];
-        current_p[1] = local_point[1] + t * local_normal[1];
-        current_p[2] = local_point[2] + t * local_normal[2];
+    for (unsigned int iter = 0; iter < ITERMAX_OVERLAP; iter++) {
+      // Update current search position: P = Start + t * Normal
+      current_p[0] = local_point[0] + overlap * local_normal[0];
+      current_p[1] = local_point[1] + overlap * local_normal[1];
+      current_p[2] = local_point[2] + overlap * local_normal[2];
 
-        // Calculate Distance Estimator value and Gradient
-        if (std::fabs(block[0] - block[1]) < 1e-6) {
-            val = stable_shape_and_gradient_local_n1equaln2(current_p, shape, block[0], local_grad);
-        } else {
-            val = stable_shape_and_gradient_local_superquad(current_p, shape, block, local_grad);
-        }
+      // Calculate Distance Estimator value and Gradient
+      if (flag == 1) {
+        val = stable_shape_and_gradient_local_n1equaln2(current_p, shape, block[0], local_grad);
+      } else {
+        val = stable_shape_and_gradient_local_superquad(current_p, shape, block, local_grad);
+      }
 
-        // Convergence Check
-        if (std::fabs(val) < tol) break;
+      // Convergence Check
+      if (std::fabs(val) < CONVERGENCE_OVERLAP) break;
 
-        // Newton Step
-        double slope = local_grad[0] * local_normal[0] + 
-                       local_grad[1] * local_normal[1] + 
-                       local_grad[2] * local_normal[2];
+      // Newton Step
+      double slope = local_grad[0] * local_normal[0] +
+                     local_grad[1] * local_normal[1] +
+                     local_grad[2] * local_normal[2];
 
-        // Safety check to prevent divide-by-zero if ray grazes surface
-        if (std::fabs(slope) < 1e-12) break;
+      // Safety check to prevent divide-by-zero if ray grazes surface
+      if (std::fabs(slope) < MINSLOPE_OVERLAP) break;
 
-        t -= val / slope;
+      overlap -= val / slope;
     }
-    
-    overlap = t;
   }
+  return overlap;
 } 
 
 } // namespace MathExtraSuperellipsoids
