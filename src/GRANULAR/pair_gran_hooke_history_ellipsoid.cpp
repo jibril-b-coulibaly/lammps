@@ -444,9 +444,9 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
 
         // forces & torques
 
-        fx = nij[0] * ccel + fs1;
-        fy = nij[1] * ccel + fs2;
-        fz = nij[2] * ccel + fs3;
+        fx = -nij[0] * ccel + fs1;
+        fy = -nij[1] * ccel + fs2;
+        fz = -nij[2] * ccel + fs3;
         fx *= factor_lj; // I think factor lj is just 1 except for special bonds
         fy *= factor_lj;
         fz *= factor_lj;
