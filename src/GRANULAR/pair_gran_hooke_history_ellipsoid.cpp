@@ -241,8 +241,8 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         }
       }
 
-      flagi = MathExtraSuperellipsoids::determine_flag(blocki); // TODO: actually pass those and use them in contact point instead of recomputing
-      flagj = MathExtraSuperellipsoids::determine_flag(blockj); // TODO: actually pass those and use them in contact point instead of recomputing
+      flagi = MathExtraSuperellipsoids::determine_flag(blocki);
+      flagj = MathExtraSuperellipsoids::determine_flag(blockj);
       // Super-ellipsoid contact detection between atoms i and j
       if (touch[jj] == 1  && touching) {
         // Continued contact: use grain true shape and last contact point
@@ -251,7 +251,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         //       not sure if enough information to do that
         MathExtra::copy3(prev_cp, X0);
         X0[3] = 1.0; // Lagrange multiplier mu^2 initially one (makes the Newton more stable in continued contact)
-        int status = MathExtraSuperellipsoids::determine_contact_point(x[i], Ri, shapei, blocki, x[j], Rj, shapej, blockj, X0, nij);
+        int status = MathExtraSuperellipsoids::determine_contact_point(x[i], Ri, shapei, blocki, flagi, x[j], Rj, shapej, blockj, flagj, X0, nij);
         if (status == 0)
           touching = true;
         else if(status == 5)
@@ -286,7 +286,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
             blockj[0] = 2.0 + frac * (bonus[ellipsoid[j]].block[0] - 2.0);
             blockj[1] = 2.0 + frac * (bonus[ellipsoid[j]].block[1] - 2.0);
           }
-          int status = MathExtraSuperellipsoids::determine_contact_point(x[i], Ri, shapei, blocki, x[j], Rj, shapej, blockj, X0, nij);
+          int status = MathExtraSuperellipsoids::determine_contact_point(x[i], Ri, shapei, blocki, flagi, x[j], Rj, shapej, blockj, flagj, X0, nij);
           if (status == 0)
             touching = true;
           else if(status == 5)

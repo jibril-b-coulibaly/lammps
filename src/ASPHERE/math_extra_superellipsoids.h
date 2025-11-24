@@ -65,8 +65,8 @@ namespace MathExtraSuperellipsoids {
   double compute_residual_and_jacobian(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki, const int flagi,
                                        const double* xcj, const double Rj[3][3], const double* shapej, const double* blockj, const int flagj,
                                        const double* X, double* shapefunc, double* residual, double* jacobian);
-  int determine_contact_point(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki,
-                              const double* xcj, const double Rj[3][3], const double* shapej, const double* blockj,
+  int determine_contact_point(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki, const int flagi,
+                              const double* xcj, const double Rj[3][3], const double* shapej, const double* blockj, const int flagj,
                               double* X0, double* nij);
   int determine_flag(const double* block);
  

@@ -417,13 +417,11 @@ double compute_residual_and_jacobian(const double* xci, const double Ri[3][3], c
 }
 
 
-int determine_contact_point(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki,
-                            const double* xcj, const double Rj[3][3], const double* shapej, const double* blockj,
+int determine_contact_point(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki, const int flagi,
+                            const double* xcj, const double Rj[3][3], const double* shapej, const double* blockj, const int flagj,
                             double* X0, double* nij) {
   double norm, norm_ini, shapefunc[2], residual[4], jacobian[16];
   bool converged(false);
-  int flagi = determine_flag(blocki);
-  int flagj = determine_flag(blockj);
 
   norm = compute_residual_and_jacobian(xci, Ri, shapei, blocki, flagi, xcj, Rj, shapej, blockj, flagj, X0, shapefunc, residual, jacobian);
   for (int iter = 0 ; iter < ITERMAX_NEWTON ; iter++) {
