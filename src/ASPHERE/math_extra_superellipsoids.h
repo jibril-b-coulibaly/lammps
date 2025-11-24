@@ -54,6 +54,11 @@ namespace MathExtraSuperellipsoids {
                                       const double* center_distance_box1, const double* center_distance_box2,
                                       const double* a, const double* b);
 
+  inline bool check_collision_and_get_seed(const double* xc1, const double R1[3][3], const double* shape1,
+                                         const double* xc2, const double R2[3][3], const double* shape2,
+                                        double* cached_axis, double* contact_point);
+
+
   // Jibril's versions of the functions for contact detection
   double shape_and_derivatives_local(const double* xlocal, const double* shape, const double* block, const int flag, double* grad, double hess[3][3]);
   double shape_and_derivatives_local_superquad(const double* xlocal, const double* shape, const double* block, double* grad, double hess[3][3]);
@@ -344,7 +349,7 @@ inline bool MathExtraSuperellipsoids::check_oriented_bounding_boxes(
     MathExtra::transpose_times3(R1, R2, C); // C = R1^T * R2
     for (unsigned int i=0; i<3; i++){
         for (unsigned int j=0; j<3; j++){
-            AbsC[i][j] = std::fabs(C[i][j]); // we only need the absolute values
+            AbsC[i][j] = std::fabs(C[i][j]); // for when absolute values are needed
         }
     }
 
@@ -353,16 +358,13 @@ inline bool MathExtraSuperellipsoids::check_oriented_bounding_boxes(
         center_distance[i] = xc2[i] - xc1[i];
     } 
 
-    // rotate center distance into box 1 frame
-    double center_distance_box1[3];
+    // Project center distance into both local frames
+    double center_distance_box1[3], center_distance_box2[3];
     MathExtra::transpose_matvec(R1, center_distance,  center_distance_box1);
-
-    //rotate center distance into box 2 frame
-    double center_distance_box2[3];
     MathExtra::transpose_matvec(R2, center_distance,  center_distance_box2);
 
     // first check the cached axis
-    const int axis = *cached_axis;
+    const int axis = (int) (*cached_axis);
     separated = check_intersection_axis(axis, C, AbsC, center_distance_box1, center_distance_box2, shape1, shape2);
 
     if (separated) return true;
@@ -474,6 +476,284 @@ inline bool MathExtraSuperellipsoids::check_intersection_axis(
     }
 }
 
+
+inline bool MathExtraSuperellipsoids::check_collision_and_get_seed(
+    const double* xc1, const double R1[3][3], const double* shape1,
+    const double* xc2, const double R2[3][3], const double* shape2, 
+    double* cached_axis, double* contact_point
+){  
+    // cache axis is the axis that separated the boxes last time
+    // due to temporal coherence we check it first
+
+    double C[3][3], AbsC[3][3];
+    MathExtra::transpose_times3(R1, R2, C); // C = R1^T * R2
+    
+    // for orientated bounding boxes we check the 15 separating axes
+    const double eps = 1e-20;
+    for (unsigned int i=0; i<3; i++){
+        for (unsigned int j=0; j<3; j++){
+            AbsC[i][j] = std::fabs(C[i][j]) + eps; // Add epsilon to prevent division by zero in edge cases
+        }
+    }
+
+    double center_distance[3]; // Center distance in Global Frame
+        for (unsigned int i=0; i<3; i++){
+        center_distance[i] = xc2[i] - xc1[i];
+    } 
+
+    // Project center distance into both local frames
+    double center_distance_box1[3], center_distance_box2[3];
+    MathExtra::transpose_matvec(R1, center_distance, center_distance_box1);
+    MathExtra::transpose_matvec(R2, center_distance, center_distance_box2);
+
+    int best_axis = -1;
+    double min_overlap = 0.0;
+    const double edge_bias = 1.05; // Prefer face contacts over edge contacts
+
+    // Lambda to test an axis. Returns TRUE if SEPARATED.
+    // I was reading that lambdas can be optimized away by the compiler.
+    // and have less overhead than function calls.
+    auto test_axis_separated = [&](int i) -> bool {
+        double R1_rad, R2_rad, dist, overlap;
+
+        // Switch is efficient here; compiler generates a jump table.
+        switch(i){
+            case 0: // A0
+                R1_rad = shape1[0];
+                R2_rad = shape2[0] * AbsC[0][0] + shape2[1] * AbsC[0][1] + shape2[2] * AbsC[0][2];
+                dist = std::fabs(center_distance_box1[0]);
+                break;
+            case 1: // A1
+                R1_rad = shape1[1];
+                R2_rad = shape2[0] * AbsC[1][0] + shape2[1] * AbsC[1][1] + shape2[2] * AbsC[1][2];
+                dist = std::fabs(center_distance_box1[1]);
+                break;
+            case 2: // A2
+                R1_rad = shape1[2];
+                R2_rad = shape2[0] * AbsC[2][0] + shape2[1] * AbsC[2][1] + shape2[2] * AbsC[2][2];
+                dist = std::fabs(center_distance_box1[2]);
+                break;
+            case 3: // B0
+                R1_rad = shape1[0] * AbsC[0][0] + shape1[1] * AbsC[1][0] + shape1[2] * AbsC[2][0];
+                R2_rad = shape2[0];
+                dist = std::fabs(center_distance_box2[0]);
+                break;
+            case 4: // B1
+                R1_rad = shape1[0] * AbsC[0][1] + shape1[1] * AbsC[1][1] + shape1[2] * AbsC[2][1];
+                R2_rad = shape2[1];
+                dist = std::fabs(center_distance_box2[1]);
+                break;
+            case 5: // B2
+                R1_rad = shape1[0] * AbsC[0][2] + shape1[1] * AbsC[1][2] + shape1[2] * AbsC[2][2];
+                R2_rad = shape2[2];
+                dist = std::fabs(center_distance_box2[2]);
+                break;
+            case 6: // A0 x B0
+                R1_rad = shape1[1] * AbsC[2][0] + shape1[2] * AbsC[1][0];
+                R2_rad = shape2[1] * AbsC[0][2] + shape2[2] * AbsC[0][1];
+                dist = std::fabs(center_distance_box1[2] * C[1][0] - center_distance_box1[1] * C[2][0]);
+                break;
+            case 7: // A0 x B1
+                R1_rad = shape1[1] * AbsC[2][1] + shape1[2] * AbsC[1][1];
+                R2_rad = shape2[0] * AbsC[0][2] + shape2[2] * AbsC[0][0];
+                dist = std::fabs(center_distance_box1[2] * C[1][1] - center_distance_box1[1] * C[2][1]);
+                break;
+            case 8: // A0 x B2
+                R1_rad = shape1[1] * AbsC[2][2] + shape1[2] * AbsC[1][2];
+                R2_rad = shape2[0] * AbsC[0][1] + shape2[1] * AbsC[0][0];
+                dist = std::fabs(center_distance_box1[2] * C[1][2] - center_distance_box1[1] * C[2][2]);
+                break;
+            case 9: // A1 x B0
+                R1_rad = shape1[0] * AbsC[2][0] + shape1[2] * AbsC[0][0];
+                R2_rad = shape2[1] * AbsC[1][2] + shape2[2] * AbsC[1][1];
+                dist = std::fabs(center_distance_box1[0] * C[2][0] - center_distance_box1[2] * C[0][0]);
+                break;
+            case 10: // A1 x B1
+                R1_rad = shape1[0] * AbsC[2][1] + shape1[2] * AbsC[0][1];
+                R2_rad = shape2[0] * AbsC[1][2] + shape2[2] * AbsC[1][0];
+                dist = std::fabs(center_distance_box1[0] * C[2][1] - center_distance_box1[2] * C[0][1]);
+                break;
+            case 11: // A1 x B2
+                R1_rad = shape1[0] * AbsC[2][2] + shape1[2] * AbsC[0][2];
+                R2_rad = shape2[0] * AbsC[1][1] + shape2[1] * AbsC[1][0];
+                dist = std::fabs(center_distance_box1[0] * C[2][2] - center_distance_box1[2] * C[0][2]);
+                break;
+            case 12: // A2 x B0
+                R1_rad = shape1[0] * AbsC[1][0] + shape1[1] * AbsC[0][0];
+                R2_rad = shape2[1] * AbsC[2][2] + shape2[2] * AbsC[2][1];
+                dist = std::fabs(center_distance_box1[1] * C[0][0] - center_distance_box1[0] * C[1][0]);
+                break;
+            case 13: // A2 x B1
+                R1_rad = shape1[0] * AbsC[1][1] + shape1[1] * AbsC[0][1];
+                R2_rad = shape2[0] * AbsC[2][2] + shape2[2] * AbsC[2][0];
+                dist = std::fabs(center_distance_box1[1] * C[0][1] - center_distance_box1[0] * C[1][1]);
+                break;
+            case 14: // A2 x B2
+                R1_rad = shape1[0] * AbsC[1][2] + shape1[1] * AbsC[0][2];
+                R2_rad = shape2[0] * AbsC[2][1] + shape2[1] * AbsC[2][0];
+                dist = std::fabs(center_distance_box1[1] * C[0][2] - center_distance_box1[0] * C[1][2]);
+                break;
+            default: return false;
+        }
+
+        if (dist > R1_rad + R2_rad) return true; // Separated!
+
+        // If not separated, track the overlap depth
+        overlap = (R1_rad + R2_rad) - dist;
+        
+        // Bias: Penalize edge axes slightly to prefer stable face contacts
+        if (i >= 6) overlap *= edge_bias;
+
+        if (overlap < min_overlap) {
+            min_overlap = overlap;
+            best_axis = i;
+        }
+        return false; // Not separated
+    };
+
+    // Check Cached Axis First (Temporal Coherence)
+    int c_axis = (int)(*cached_axis);
+    if (test_axis_separated(c_axis)) return false; 
+
+    // Check remaining axes
+    for (int i = 0; i < 15; i++){
+        if (i == c_axis) continue;
+        if (test_axis_separated(i)) {
+            *cached_axis = (double)i;
+            return false;
+        }
+    }
+   
+    // If we reached here, 'best_axis' holds the axis index where the overlap is minimal
+    if (best_axis < 6) {
+        // Face-to-Face contact logic: Project "Incident" box onto "Reference" face, clip to find overlap center.
+        // Pointers to define who is Reference (the face) and who is Incident
+        const double* posRef = xc1;
+        const double* posInc = xc2;
+        const double (*RRef)[3] = R1;
+        const double (*RInc)[3] = R2;
+        const double* shapeRef = shape1;
+        const double* shapeInc = shape2;
+        double* D_local_Ref = center_distance_box1; // Center dist in Ref frame
+
+        int axis = best_axis; 
+
+        // Swap if Reference is Box 2 (Indices 3, 4, 5)
+        if (best_axis >= 3) {
+            posRef = xc2;
+            posInc = xc1;
+            RRef = R2;
+            RInc = R1;
+            shapeRef = shape2;
+            shapeInc = shape1;
+            D_local_Ref = center_distance_box2;
+            axis -= 3;
+        }
+
+        double seed_local[3];
+
+        //Normal Component: Midway through the penetration depth
+        // Calculate projected radius of Incident block onto this axis
+        
+        double dir = (D_local_Ref[axis] > 0) ? 1.0 : -1.0;
+        double radInc_proj = 0.0;
+        for(int k=0; k<3; k++) {
+            // If swapped (Box 2 is Ref), we need AbsC^T, so we swap AbsC indices
+            double val = (best_axis < 3) ? AbsC[axis][k] : AbsC[k][axis];
+            radInc_proj += shapeInc[k] * val;
+        }
+
+        double surfRef = dir * shapeRef[axis];
+        double surfInc = D_local_Ref[axis] - (dir * radInc_proj);
+        seed_local[axis] = 0.5 * (surfRef + surfInc);
+
+        // Lateral Components: 1D Interval Overlap
+        for(int k=0; k<3; k++) {
+            if (k == axis) continue; // Skip the normal axis
+
+            double minRef = -shapeRef[k];
+            double maxRef =  shapeRef[k];
+
+            double radInc = 0.0;
+            for(int j=0; j<3; j++) {
+                double val = (best_axis < 3) ? AbsC[k][j] : AbsC[j][k]; 
+                radInc += shapeInc[j] * val;
+            }
+            double centerInc = D_local_Ref[k];
+            
+            double minInc = centerInc - radInc;
+            double maxInc = centerInc + radInc;
+
+            // Find intersection of intervals [minRef, maxRef] and [minInc, maxInc]
+            double start = (minRef > minInc) ? minRef : minInc; 
+            double end   = (maxRef < maxInc) ? maxRef : maxInc; 
+            seed_local[k] = 0.5 * (start + end); // Midpoint of overlap
+
+        }
+
+        // Transform Local Seed -> World Space
+        MathExtra::matvec(RRef, seed_local, contact_point);
+        for(int k=0; k<3; k++) contact_point[k] += posRef[k];
+    } 
+    else {
+        // Edge-to-edge contact logic: Midpoint of the closest points on the two skew edge lines.
+        // The logic is that index 6 corresponds to A_0 x B_0, 7 to A_0 x B_1, ..., 14 to A_2 x B_2
+        int edgeA_idx = (best_axis - 6) / 3;
+        int edgeB_idx = (best_axis - 6) % 3;
+
+        // Get World directions of the edges
+        double u[3] = { R1[0][edgeA_idx], R1[1][edgeA_idx], R1[2][edgeA_idx] };
+        double v[3] = { R2[0][edgeB_idx], R2[1][edgeB_idx], R2[2][edgeB_idx] };
+
+        // Identify the specific edges by checking the normal direction
+        // The normal N is roughly the distance vector center_distance for the closest edges
+        double N_loc1[3], N_loc2[3];
+        MathExtra::transpose_matvec(R1, center_distance, N_loc1);
+        MathExtra::transpose_matvec(R2, center_distance, N_loc2);
+
+        // Find Center of Edge A in World Space
+        double midA[3]; for(int k=0; k<3; k++) midA[k] = xc1[k];
+        for(int k=0; k<3; k++){
+            if(k == edgeA_idx) continue;
+            // Move to the face pointing towards B
+            double sign = (N_loc1[k] > 0) ? 1.0 : -1.0;
+            double offset = sign * shape1[k];
+            midA[0] += R1[0][k]*offset; midA[1] += R1[1][k]*offset; midA[2] += R1[2][k]*offset;
+        }
+
+        // Find Center of Edge B in World Space
+        double midB[3]; for(int k=0; k<3; k++) midB[k] = xc2[k];
+        for(int k=0; k<3; k++){
+            if(k == edgeB_idx) continue;
+            // Move to the face pointing away from A (Since center_distance is A->B, we check -N_loc2)
+            double sign = (N_loc2[k] < 0) ? 1.0 : -1.0; 
+            double offset = sign * shape2[k];
+            midB[0] += R2[0][k]*offset; midB[1] += R2[1][k]*offset; midB[2] += R2[2][k]*offset;
+        }
+
+        // Closest Points on Two Skew Lines 
+        // Line1 parameterized by s: P_A = midA + s*u
+        // Line2 parameterized by t: P_B = midB + t*v
+        double r[3] = { midB[0]-midA[0], midB[1]-midA[1], midB[2]-midA[2] };
+        double u_dot_v = u[0]*v[0]+u[1]*v[1]+u[2]*v[2];
+        double u_dot_r = u[0]*r[0]+u[1]*r[1]+u[2]*r[2];
+        double v_dot_r = v[0]*r[0]+v[1]*r[1]+v[2]*r[2];
+        
+        // Denom is 1 - (u.v)^2 because u and v are unit vectors
+        double denom = 1.0 - u_dot_v*u_dot_v + eps; 
+        double s = (u_dot_r - u_dot_v * v_dot_r) / denom;
+        double t = (u_dot_v * u_dot_r - v_dot_r) / denom; // Note: simplified derivation
+
+        // Compute World Points
+        double PA[3] = { midA[0]+s*u[0], midA[1]+s*u[1], midA[2]+s*u[2] };
+        double PB[3] = { midB[0]+t*v[0], midB[1]+t*v[1], midB[2]+t*v[2] };
+
+        // Seed is the midpoint
+        for(int k=0; k<3; k++) contact_point[k] = 0.5 * (PA[k] + PB[k]);
+    }
+
+    return true; // Collision confirmed
+}
 
 
 #endif
