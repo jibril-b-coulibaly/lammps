@@ -46,8 +46,8 @@ PairGranHookeHistoryEllipsoid::PairGranHookeHistoryEllipsoid(LAMMPS *lmp) : Pair
   no_virial_fdotr_compute = 1;
   centroidstressflag = CENTROID_NOTAVAIL;
   finitecutflag = 1;
-  history = 1;
-  size_history = 6;  // shear[3], previous_cp[3]
+  use_history = 1;
+  size_history = 8;  // shear[3], contact_point_and_Lagrange_multiplier[4], separating_axis_index
 
   single_extra = 10;
   svector = new double[10];
@@ -113,8 +113,8 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
   double fn, fs, fs1, fs2, fs3;
   double shrmag, rsht;
   int *ilist, *jlist, *numneigh, **firstneigh;
-  int *touch, **firsttouch, *cached_axis_index; // added cached axis index for bounding box check
-  double *shear, *allshear, **firstshear, *prev_cp; // added previous contact point placeholder
+  int *touch, **firsttouch;
+  double *shear, *X0_prev, *separating_axis, *history, *allhistory, **firsthistory;
 
   double shapex, shapey, shapez; // ellipsoid shape params
   double quat1, quat2, quat3, quat4;
@@ -172,7 +172,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
   numneigh = list->numneigh;
   firstneigh = list->firstneigh;
   firsttouch = fix_history->firstflag;
-  firstshear = fix_history->firstvalue;
+  firsthistory = fix_history->firstvalue;
 
   // loop over neighbors of my atoms
 
@@ -185,7 +185,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
 
 
     touch = firsttouch[i];
-    allshear = firstshear[i];
+    allhistory = firsthistory[i];
     jlist = firstneigh[i];
     jnum = numneigh[i];
 
@@ -203,11 +203,14 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
       radj = radius[j];
       radsum = radi + radj;
 
+      X0_prev = &allhistory[3 + size_history * jj];
+
       bool touching = true;
       if (rsq >= radsum * radsum) {
         touching = false;
       }
       else {    
+        separating_axis = &allhistory[7 + size_history * jj];
          // compute aspect ratios, if they are not that different from zero skip
          // to the newton rapson, else do the bounding box
          MathExtra::copy3(bonus[ellipsoid[i]].shape, shapei);
@@ -232,7 +235,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
          if (high_aspect_ratio){
           // check the bounding box
           bool obb_separate = MathExtraSuperellipsoids::check_oriented_bounding_boxes(
-            x[i], Ri, shapei, x[j], Rj, shapej, *cached_axis_index);
+            x[i], Ri, shapei, x[j], Rj, shapej, separating_axis);
           
           if (obb_separate) {
             touching = false;
@@ -248,8 +251,10 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         // TODO: implement neigh history!
         // TODO: move contact point with rigid body motion of the pair ?
         //       not sure if enough information to do that
-        MathExtra::copy3(prev_cp, X0);
-        X0[3] = 1.0; // Lagrange multiplier mu^2 initially one (makes the Newton more stable in continued contact)
+        X0[0] = X0_prev[0];
+        X0[1] = X0_prev[1];
+        X0[2] = X0_prev[2];
+        X0[3] = X0_prev[3];
         int status = MathExtraSuperellipsoids::determine_contact_point(x[i], Ri, shapei, blocki, flagi, x[j], Rj, shapej, blockj, flagj, X0, nij);
         if (status == 0)
           touching = true;
@@ -271,7 +276,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         MathExtra::scaleadd3(reqj / (reqi + reqj), x[i], reqi / (reqi + reqj), x[j], X0);
         //   MathExtra::scaleadd3(radj / radsum, x[i], radi /radsum, x[j], X0);
         for (int iter_ig = 1 ; iter_ig <= NUMSTEP_INITIAL_GUESS ; iter_ig++) {
-          X0[3] = 0.0; // Lagrange multiplier mu^2 initially zero
+          X0[3] = 1.0; // Lagrange multiplier mu^2 initially one (makes the Newton more stable in continued contact)
           double frac = iter_ig / double(NUMSTEP_INITIAL_GUESS);
           shapei[0] = shapei[1] = shapei[2] = reqi;
           shapej[0] = shapej[1] = shapej[2] = reqj;
@@ -300,13 +305,13 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         // unset non-touching neighbors
 
         touch[jj] = 0;
-        shear = &allshear[3 * jj];
-        shear[0] = 0.0;
-        shear[1] = 0.0;
-        shear[2] = 0.0;
+        history = &allhistory[size_history * jj];
+        for (int k = 0; k < size_history; k++) history[k] = 0.0;
       } else {
-        // TODO: Compute the force between the 2 superquadrics
-        MathExtra::copy3(X0, prev_cp);
+        X0_prev[0] = X0[0];
+        X0_prev[1] = X0[1];
+        X0_prev[2] = X0[2];
+        X0_prev[3] = X0[3];
 
         double nji[3] = { -nij[0], -nij[1], -nij[2] };
         // compute overlap depth along normal direction for each grain
@@ -392,7 +397,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         // shear history effects
 
         touch[jj] = 1;
-        shear = &allshear[3 * jj];
+        shear = &allhistory[size_history * jj];
 
         if (shearupdate) {
           shear[0] += vtr1 * dt;
@@ -583,7 +588,7 @@ void PairGranHookeHistoryEllipsoid::init_style()
 
   // need a granular neighbor list
 
-  if (history)
+  if (use_history)
     neighbor->add_request(this, NeighConst::REQ_SIZE | NeighConst::REQ_HISTORY);
   else
     neighbor->add_request(this, NeighConst::REQ_SIZE);
@@ -594,7 +599,7 @@ void PairGranHookeHistoryEllipsoid::init_style()
   // it replaces FixDummy, created in the constructor
   // this is so its order in the fix list is preserved
 
-  if (history && (fix_history == nullptr)) {
+  if (use_history && (fix_history == nullptr)) {
     auto cmd = fmt::format("NEIGH_HISTORY_HH_ELL{} all NEIGH_HISTORY {}", instance_me, size_history);
     fix_history = dynamic_cast<FixNeighHistory *>(
         modify->replace_fix("NEIGH_HISTORY_HH_ELL_DUMMY" + std::to_string(instance_me), cmd, 1));
@@ -665,7 +670,7 @@ void PairGranHookeHistoryEllipsoid::init_style()
 
   // set fix which stores history info
 
-  if (history) {
+  if (use_history) {
     fix_history = dynamic_cast<FixNeighHistory *>(
         modify->get_fix_by_id("NEIGH_HISTORY_HH_ELL" + std::to_string(instance_me)));
     if (!fix_history) error->all(FLERR, "Could not find pair fix neigh history ID");

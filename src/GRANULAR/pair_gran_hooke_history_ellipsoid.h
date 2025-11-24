@@ -50,7 +50,7 @@ class PairGranHookeHistoryEllipsoid : public Pair {
   int dampflag;
   double dt;
   int freeze_group_bit;
-  int history;
+  int use_history;
   int limit_damping;
 
   int neighprev;

@@ -48,7 +48,7 @@ namespace MathExtraSuperellipsoids {
   // ADD CONTACT DETECTION HERE
   inline bool check_oriented_bounding_boxes(const double* xc1, const double R1[3][3], const double* shape1,
                                         const double* xc2, const double R2[3][3], const double* shape2, 
-                                        int &cached_axis);
+                                        double* cached_axis);
 
   inline bool check_intersection_axis(const int axis_id, const double C[3][3], const double AbsC[3][3], 
                                       const double* center_distance_box1, const double* center_distance_box2,
@@ -332,7 +332,7 @@ inline bool MathExtraSuperellipsoids::solve_4x4_robust_unrolled(double A[16], do
 inline bool MathExtraSuperellipsoids::check_oriented_bounding_boxes(
     const double* xc1, const double R1[3][3], const double* shape1,
     const double* xc2, const double R2[3][3], const double* shape2, 
-    int &cached_axis
+    double* cached_axis
 ){
     // cache axis is the axis that separated the boxes last time
     // due to temporal coherence we check it first
@@ -362,15 +362,16 @@ inline bool MathExtraSuperellipsoids::check_oriented_bounding_boxes(
     MathExtra::transpose_matvec(R2, center_distance,  center_distance_box2);
 
     // first check the cached axis
-    separated = check_intersection_axis(cached_axis, C, AbsC, center_distance_box1, center_distance_box2, shape1, shape2);
+    const int axis = *cached_axis;
+    separated = check_intersection_axis(axis, C, AbsC, center_distance_box1, center_distance_box2, shape1, shape2);
 
     if (separated) return true;
     // then check all the other axes
     for (int axis_id = 0; axis_id < 15; axis_id++){
-        if (axis_id == cached_axis) continue; // already checked
+        if (axis_id == axis) continue; // already checked
         separated = check_intersection_axis(axis_id, C, AbsC, center_distance_box1, center_distance_box2, shape1, shape2);
         if (separated) {
-            cached_axis = axis_id; // update cached axis
+            *cached_axis = axis_id; // update cached axis
             return true;
         }
     }
