@@ -22,6 +22,7 @@
 #include "math_extra.h"
 
 namespace MathExtraSuperellipsoids {
+  inline constexpr double TIKHONOV_SCALE = 1e-8;
   double beta_func(double a, double b);
   void volume_superellipsoid(const double *blockiness, const double *shape, double volume); // duplicated from math_extra might remove
   void inertia_superellipsoid(const double *shape, const double *blockiness, double density, double *inertia); // duplicated from math_extra might remove
@@ -124,13 +125,14 @@ inline double MathExtraSuperellipsoids::det4_M44_zero(const double m[4][4])
 
 inline bool MathExtraSuperellipsoids::solve_4x4_manual(double A[16], double b[4]) {
     
-    // 0. Regularization to avoid singularities
-    // Add small epsilon to diagonal to handle singular cases (e.g. flat contact)
-    const double lambda = 1e-8; 
-    A[0]  += lambda;
-    A[5]  += lambda;
-    A[10] += lambda;
-    A[15] += lambda;
+    // Tikhonov regularization
+    // High blockiness grains can have zero curvature / singular Hessian
+    // along principal local axes (x=0, y=0, z=0)
+    const double diag_weight = TIKHONOV_SCALE * (A[0] + A[5] + A[10] + A[15]);
+    A[0]  += diag_weight;
+    A[5]  += diag_weight;
+    A[10] += diag_weight;
+    A[15] += diag_weight;
 
     // 1. Pivot 0 
     double inv0 = 1.0 / A[0];
@@ -169,13 +171,14 @@ inline bool MathExtraSuperellipsoids::solve_4x4_robust(double A[16], double b[4]
     // Helper lambda to access A[row, col]
     auto at = [&](int r, int c) -> double& { return A[r * 4 + c]; };
 
-    // 0. Regularization to avoid singularities
-    // Add small epsilon to diagonal to handle singular cases (e.g. flat contact)
-    const double lambda = 1e-8; 
-    A[0]  += lambda;
-    A[5]  += lambda;
-    A[10] += lambda;
-    A[15] += lambda;
+    // Tikhonov regularization
+    // High blockiness grains can have zero curvature / singular Hessian
+    // along principal local axes (x=0, y=0, z=0)
+    const double diag_weight = TIKHONOV_SCALE * (A[0] + A[5] + A[10] + A[15]);
+    A[0]  += diag_weight;
+    A[5]  += diag_weight;
+    A[10] += diag_weight;
+    A[15] += diag_weight;
 
     // --- FORWARD ELIMINATION with PARTIAL PIVOTING ---
     
@@ -232,13 +235,14 @@ inline bool MathExtraSuperellipsoids::solve_4x4_robust(double A[16], double b[4]
 
 inline bool MathExtraSuperellipsoids::solve_4x4_robust_unrolled(double A[16], double b[4]) {
     
-    // 0. Regularization to avoid singularities
-    // Add small epsilon to diagonal to handle singular cases (e.g. flat contact)
-    const double lambda = 1e-8; 
-    A[0]  += lambda;
-    A[5]  += lambda;
-    A[10] += lambda;
-    A[15] += lambda;
+    // Tikhonov regularization
+    // High blockiness grains can have zero curvature / singular Hessian
+    // along principal local axes (x=0, y=0, z=0)
+    const double diag_weight = TIKHONOV_SCALE * (A[0] + A[5] + A[10] + A[15]);
+    A[0]  += diag_weight;
+    A[5]  += diag_weight;
+    A[10] += diag_weight;
+    A[15] += diag_weight;
     
      // --- COLUMN 0 ---
     // 1. Find Pivot in Col 0

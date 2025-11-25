@@ -42,7 +42,6 @@ static constexpr double CUTBACK_LINESEARCH = 0.5;
 static constexpr double CONVERGENCE_OVERLAP = 1e-8;
 static constexpr unsigned int ITERMAX_OVERLAP = 20;
 static constexpr double MINSLOPE_OVERLAP = 1e-12;
-static constexpr double TIKHONOV_SCALE = 1e-8;
 
 /* ----------------------------------------------------------------------
    beta function B(x,y) = Gamma(x) * Gamma(y) / Gamma(x+y)
