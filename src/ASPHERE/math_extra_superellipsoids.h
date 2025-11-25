@@ -66,6 +66,10 @@ namespace MathExtraSuperellipsoids {
   double shape_and_derivatives_local_n1equaln2(const double* xlocal, const double* shape, const double n, double* grad, double hess[3][3]);
   double shape_and_derivatives_local_ellipsoid(const double* xlocal, const double* shape, double* grad, double hess[3][3]);
   double shape_and_derivatives_global(const double* xc, const double R[3][3], const double* shape, const double* block, const int flag, const double* X0, double* grad, double hess[3][3]);
+  
+  double regularized_shape_and_derivatives_local(const double* xlocal, const double* shape, const double* block, const int flag, double* grad, double hess[3][3]);
+  double regularized_shape_and_derivatives_global(const double* xc, const double R[3][3], const double* shape, const double* block, const int flag, const double* X0, double* grad, double hess[3][3]);
+
   double compute_residual(const double shapefunci, const double* gradi_global, const double shapefuncj, const double* gradj_global, const double mu2, double* residual);
   void compute_jacobian(const double* gradi_global, const double hessi_global[3][3], const double* gradj_global, const double hessj_global[3][3], const double mu2, double* jacobian);
   double compute_residual_and_jacobian(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki, const int flagi,
@@ -82,6 +86,8 @@ namespace MathExtraSuperellipsoids {
   double stable_shape_and_gradient_local_ellipsoid(const double* xlocal, const double* shape, double* grad);
   double compute_overlap_distance(const double* shape, const double* block, const double Rot[3][3], const int flag, const double* global_point, const double* global_normal, const double* center);
 
+  void apply_regularization_shape_function(double n1, double *value, double *grad, double hess[3][3]);
+  
 };
 
 
@@ -128,12 +134,11 @@ inline bool MathExtraSuperellipsoids::solve_4x4_manual(double A[16], double b[4]
     // Tikhonov regularization
     // High blockiness grains can have zero curvature / singular Hessian
     // along principal local axes (x=0, y=0, z=0)
-    const double diag_weight = TIKHONOV_SCALE * (A[0] + A[5] + A[10] + A[15]);
+    const double diag_weight = TIKHONOV_SCALE * (A[0] + A[5] + A[10]);
     A[0]  += diag_weight;
     A[5]  += diag_weight;
     A[10] += diag_weight;
-    A[15] += diag_weight;
-
+    
     // 1. Pivot 0 
     double inv0 = 1.0 / A[0];
     double m1 = A[4] * inv0;
@@ -174,11 +179,10 @@ inline bool MathExtraSuperellipsoids::solve_4x4_robust(double A[16], double b[4]
     // Tikhonov regularization
     // High blockiness grains can have zero curvature / singular Hessian
     // along principal local axes (x=0, y=0, z=0)
-    const double diag_weight = TIKHONOV_SCALE * (A[0] + A[5] + A[10] + A[15]);
+    const double diag_weight = TIKHONOV_SCALE * (A[0] + A[5] + A[10]);
     A[0]  += diag_weight;
     A[5]  += diag_weight;
     A[10] += diag_weight;
-    A[15] += diag_weight;
 
     // --- FORWARD ELIMINATION with PARTIAL PIVOTING ---
     
@@ -238,11 +242,10 @@ inline bool MathExtraSuperellipsoids::solve_4x4_robust_unrolled(double A[16], do
     // Tikhonov regularization
     // High blockiness grains can have zero curvature / singular Hessian
     // along principal local axes (x=0, y=0, z=0)
-    const double diag_weight = TIKHONOV_SCALE * (A[0] + A[5] + A[10] + A[15]);
+    const double diag_weight = TIKHONOV_SCALE * (A[0] + A[5] + A[10] );
     A[0]  += diag_weight;
     A[5]  += diag_weight;
     A[10] += diag_weight;
-    A[15] += diag_weight;
     
      // --- COLUMN 0 ---
     // 1. Find Pivot in Col 0

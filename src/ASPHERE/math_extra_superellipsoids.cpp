@@ -426,6 +426,17 @@ double shape_and_derivatives_local_ellipsoid(const double* xlocal, const double*
   return 0.5 * (grad[0]*xlocal[0] + grad[1]*xlocal[1] + grad[2]*xlocal[2]) - 1.0;
 }
 
+double regularized_shape_and_derivatives_global(const double* xc, const double R[3][3], const double* shape, const double* block, const int flag, const double* X0, double* grad, double hess[3][3]) {
+  double shapefunc, xlocal[3], tmp_v[3], tmp_m[3][3];
+  MathExtra::sub3(X0, xc, tmp_v);
+  MathExtra::transpose_matvec(R, tmp_v, xlocal);
+  regularized_shape_and_derivatives_local(xlocal, shape, block, flag, tmp_v, hess);
+  MathExtra::matvec(R, tmp_v, grad);
+  MathExtra::times3_transpose(hess, R, tmp_m);
+  MathExtra::times3(R, tmp_m, hess);
+  return shapefunc;
+}
+
 double shape_and_derivatives_global(const double* xc, const double R[3][3], const double* shape, const double* block, const int flag, const double* X0, double* grad, double hess[3][3]) {
   double shapefunc, xlocal[3], tmp_v[3], tmp_m[3][3];
   MathExtra::sub3(X0, xc, tmp_v);
