@@ -42,6 +42,7 @@ static constexpr double CUTBACK_LINESEARCH = 0.5;
 static constexpr double CONVERGENCE_OVERLAP = 1e-8;
 static constexpr unsigned int ITERMAX_OVERLAP = 20;
 static constexpr double MINSLOPE_OVERLAP = 1e-12;
+static constexpr double TIKHONOV_SCALE = 1e-8;
 
 /* ----------------------------------------------------------------------
    beta function B(x,y) = Gamma(x) * Gamma(y) / Gamma(x+y)
@@ -404,6 +405,14 @@ void compute_jacobian(const double* gradi_global, const double hessi_global[3][3
     jacobian[3 + col*4] = gradi_global[col] - gradj_global[col];
   }
   jacobian[15] = 0.0;
+
+  // Tikhonov regularization
+  // High blockiness grains can have zero curvature / singular Hessian
+  // along principal local axes (x=0, y=0, z=0)
+  double diag_weight = TIKHONOV_SCALE * (jacobian[0] + jacobian[5] + jacobian[10]);
+  jacobian[0]  += diag_weight;
+  jacobian[5]  += diag_weight;
+  jacobian[10] += diag_weight;
 }
 
 double compute_residual_and_jacobian(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki, const int flagi,
