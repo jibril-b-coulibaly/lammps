@@ -430,7 +430,7 @@ double regularized_shape_and_derivatives_global(const double* xc, const double R
   double shapefunc, xlocal[3], tmp_v[3], tmp_m[3][3];
   MathExtra::sub3(X0, xc, tmp_v);
   MathExtra::transpose_matvec(R, tmp_v, xlocal);
-  regularized_shape_and_derivatives_local(xlocal, shape, block, flag, tmp_v, hess);
+  shapefunc = regularized_shape_and_derivatives_local(xlocal, shape, block, flag, tmp_v, hess);
   MathExtra::matvec(R, tmp_v, grad);
   MathExtra::times3_transpose(hess, R, tmp_m);
   MathExtra::times3(R, tmp_m, hess);
@@ -441,7 +441,7 @@ double shape_and_derivatives_global(const double* xc, const double R[3][3], cons
   double shapefunc, xlocal[3], tmp_v[3], tmp_m[3][3];
   MathExtra::sub3(X0, xc, tmp_v);
   MathExtra::transpose_matvec(R, tmp_v, xlocal);
-  shape_and_derivatives_local(xlocal, shape, block, flag, tmp_v, hess);
+  shapefunc = shape_and_derivatives_local(xlocal, shape, block, flag, tmp_v, hess);
   MathExtra::matvec(R, tmp_v, grad);
   MathExtra::times3_transpose(hess, R, tmp_m);
   MathExtra::times3(R, tmp_m, hess);
