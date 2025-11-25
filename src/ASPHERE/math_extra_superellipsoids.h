@@ -123,6 +123,15 @@ inline double MathExtraSuperellipsoids::det4_M44_zero(const double m[4][4])
 }
 
 inline bool MathExtraSuperellipsoids::solve_4x4_manual(double A[16], double b[4]) {
+    
+    // 0. Regularization to avoid singularities
+    // Add small epsilon to diagonal to handle singular cases (e.g. flat contact)
+    const double lambda = 1e-8; 
+    A[0]  += lambda;
+    A[5]  += lambda;
+    A[10] += lambda;
+    A[15] += lambda;
+
     // 1. Pivot 0 
     double inv0 = 1.0 / A[0];
     double m1 = A[4] * inv0;
@@ -159,6 +168,14 @@ inline bool MathExtraSuperellipsoids::solve_4x4_manual(double A[16], double b[4]
 inline bool MathExtraSuperellipsoids::solve_4x4_robust(double A[16], double b[4]) {
     // Helper lambda to access A[row, col]
     auto at = [&](int r, int c) -> double& { return A[r * 4 + c]; };
+
+    // 0. Regularization to avoid singularities
+    // Add small epsilon to diagonal to handle singular cases (e.g. flat contact)
+    const double lambda = 1e-8; 
+    A[0]  += lambda;
+    A[5]  += lambda;
+    A[10] += lambda;
+    A[15] += lambda;
 
     // --- FORWARD ELIMINATION with PARTIAL PIVOTING ---
     
@@ -214,6 +231,15 @@ inline bool MathExtraSuperellipsoids::solve_4x4_robust(double A[16], double b[4]
 }
 
 inline bool MathExtraSuperellipsoids::solve_4x4_robust_unrolled(double A[16], double b[4]) {
+    
+    // 0. Regularization to avoid singularities
+    // Add small epsilon to diagonal to handle singular cases (e.g. flat contact)
+    const double lambda = 1e-8; 
+    A[0]  += lambda;
+    A[5]  += lambda;
+    A[10] += lambda;
+    A[15] += lambda;
+    
      // --- COLUMN 0 ---
     // 1. Find Pivot in Col 0
     int p = 0; 
