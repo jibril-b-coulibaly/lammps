@@ -391,7 +391,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         // normal forces = Hookian contact + normal velocity damping
 
         damp = meff * gamman * vnnr;
-        ccel = kn * (overlap1 + overlap2) - damp; // assuming we get the overlap depth
+        ccel = kn * (overlap1 + overlap2) + damp; // assuming we get the overlap depth
         if (limit_damping && (ccel < 0.0)) ccel = 0.0;
 
         // shear history effects
