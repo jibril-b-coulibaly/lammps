@@ -578,28 +578,29 @@ int determine_contact_point(const double* xci, const double Ri[3][3], const doub
         // Can still fail the Armijo - Goldstein condition`
         a *= CUTBACK_LINESEARCH;
       } else {
-        X0[0] = X_line[0];
-        X0[1] = X_line[1];
-        X0[2] = X_line[2];
-        X0[3] = X_line[3];
         // Only compute the jacobian if there is another Newton iteration to come
         double tmp_m[3][3];
         MathExtra::times3_transpose(hessi, Ri, tmp_m);
         MathExtra::times3(Ri, tmp_m, hessi);
         MathExtra::times3_transpose(hessj, Rj, tmp_m);
         MathExtra::times3(Rj, tmp_m, hessj);
-        compute_jacobian(gradi, hessi, gradj, hessj, X0[3], jacobian);
+        compute_jacobian(gradi, hessi, gradj, hessj, X_line[3], jacobian);
         break;
       }
     }
-
-    // If no descent with line search, take full step, try to escape bad region
+    // Take full step if no descent at the end of line search
+    // Try to escape bad region
     if (iter_ls == ITERMAX_LINESEARCH) {
       X0[0] += rhs[0];
       X0[1] += rhs[1];
       X0[2] += rhs[2];
       X0[3] += rhs[3];
       norm = compute_residual_and_jacobian(xci, Ri, shapei, blocki, flagi, xcj, Rj, shapej, blockj, flagj, X0, shapefunc, residual, jacobian);
+    } else {
+      X0[0] = X_line[0];
+      X0[1] = X_line[1];
+      X0[2] = X_line[2];
+      X0[3] = X_line[3];
     }
 
     if (converged)
