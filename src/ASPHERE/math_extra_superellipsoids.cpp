@@ -255,7 +255,60 @@ void shape_function_local_hessian(
                      pow(abs(point[1]*binv), n2 -1) * pow(nu, n1 / n2 - 2) * copysign(1.0, shape[0] * shape[1]); 
                 
   }
+/* ----------------------------------------------------------------------
+   Possible regularization for the shape functions
+   Instead of F(x,y,z) - 1 = 0 we use (F(x,y,z))^(1/n1) -1 = G(x,y,z) = 0
+   The gradient is simply nabla G = (1/n1) * (F)^(1/n1 - 1) * nabla F
+   The hessian is H(G) = (1/n1) * (F)^(1/n1 - 1) * H(F) + (1/n1) * (1/n1 - 1) * (F)^(1/n1 - 2) * nabla F (nabla F)^T
+------------------------------------------------------------------------- */
+void apply_regularization_shape_function(double n1, double *value, double *grad, double hess[3][3]){
+  // value is F - 1
+  double F = *value + 1.0; // should be fine as long as one does not start from the center (otherwise we could guard against it)
+  double inv_n1 = 1.0 / n1;
+  double F_pow_1_n1_m1 = pow(F, inv_n1 - 1.0);
 
+  // scale factor for grainet and first term in the hessian
+  double scale_grad_hess1 = inv_n1 * F_pow_1_n1_m1;
+
+  // B = (1/n) * (1/n - 1) * F^(1/n - 2) simplifies to scale_grad * (inv_n1 - 1.0) / F
+  double scale_hess_add = scale_grad_hess1 * (inv_n1 - 1.0) / F;
+
+  *value = pow(F, inv_n1) - 1.0; 
+
+  // hessian update
+  for (int i = 0; i < 3; i++) {
+    for (int j = 0; j < 3; j++) {
+      double grad_gratT = grad[i] * grad[j];
+      hess[i][j] = (hess[i][j] * scale_grad_hess1) + (scale_hess_add * grad_gratT);
+    }
+  }
+
+  for (int i = 0; i < 3; i++) {
+    grad[i] *= scale_grad_hess1;
+  }
+};
+
+double regularized_shape_and_derivatives_local(const double* xlocal, const double* shape, const double* block, const int flag, double* grad, double hess[3][3]) {
+  double shapefunc;
+  double n1 = block[0];
+  switch (flag) {
+    case 0: {
+      shapefunc = shape_and_derivatives_local_ellipsoid(xlocal, shape, grad, hess);
+      break;
+    }
+    case 1: {
+      shapefunc = shape_and_derivatives_local_n1equaln2(xlocal, shape, block[0], grad, hess);
+      break;
+    }
+    case 2: {
+      shapefunc = shape_and_derivatives_local_superquad(xlocal, shape, block, grad, hess);
+      break;
+    }
+  }
+
+  apply_regularization_shape_function(n1, &shapefunc, grad, hess);
+  return shapefunc;
+}
 
 double shape_and_derivatives_local(const double* xlocal, const double* shape, const double* block, const int flag, double* grad, double hess[3][3]) {
   double shapefunc;
