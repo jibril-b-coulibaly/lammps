@@ -485,6 +485,8 @@ int determine_contact_point(const double* xci, const double Ri[3][3], const doub
   bool converged(false);
 
   norm = compute_residual_and_jacobian(xci, Ri, shapei, blocki, flagi, xcj, Rj, shapej, blockj, flagj, X0, shapefunc, residual, jacobian);
+  // TODO: would it be wise or crazy to test for convergence before even attempting Newton's method?
+  //       the initial guess is the old X0, so with temporal coherence, it might still pass deformation is slow!
   for (int iter = 0 ; iter < ITERMAX_NEWTON ; iter++) {
     norm_ini = norm;
 
@@ -552,7 +554,17 @@ int determine_contact_point(const double* xci, const double Ri[3][3], const doub
 
       norm = compute_residual(shapefunc[0], gradi, shapefunc[1], gradj, X_line[3], residual);
 
-      if (norm > norm_ini - PARAMETER_LINESEARCH * a * norm_ini) { // Armijo - Goldstein condition not met
+      if (norm <= CONVERGENCE_NEWTON) {
+        converged = true;
+        // TODO: consider testing picking the normal with the least error
+        //       i.e., likely the grain with the smallest curvature (Hessian norm)
+        //       or some other measure like average gradients.
+        //       right now we use the gradient on grain i for simplicity and performance. When testing, we could see if using  is just as good
+        MathExtra::normalize3(gradi, nij);
+        break;
+      } else if (norm > norm_ini - PARAMETER_LINESEARCH * a * norm_ini) { // Armijo - Goldstein condition not met
+        // Tested after convergence check because tiny values of norm and norm_ini < CONVERGENCE_NEWTON
+        // Can still fail the Armijo - Goldstein condition`
         a *= CUTBACK_LINESEARCH;
       } else {
         X0[0] = X_line[0];
@@ -560,21 +572,12 @@ int determine_contact_point(const double* xci, const double Ri[3][3], const doub
         X0[2] = X_line[2];
         X0[3] = X_line[3];
         // Only compute the jacobian if there is another Newton iteration to come
-        if (norm > CONVERGENCE_NEWTON) {
-          double tmp_m[3][3];
-          MathExtra::times3_transpose(hessi, Ri, tmp_m);
-          MathExtra::times3(Ri, tmp_m, hessi);
-          MathExtra::times3_transpose(hessj, Rj, tmp_m);
-          MathExtra::times3(Rj, tmp_m, hessj);
-          compute_jacobian(gradi, hessi, gradj, hessj, X0[3], jacobian);
-        } else {
-          converged = true;
-          // TODO: consider testing picking the normal with the least error
-          //       i.e., likely the grain with the smallest curvature (Hessian norm)
-          //       or some other measure like average gradients.
-          //       right now we use the gradient on grain i for simplicity and performance. When testing, we could see if using  is just as good
-          MathExtra::normalize3(gradi, nij);
-        }
+        double tmp_m[3][3];
+        MathExtra::times3_transpose(hessi, Ri, tmp_m);
+        MathExtra::times3(Ri, tmp_m, hessi);
+        MathExtra::times3_transpose(hessj, Rj, tmp_m);
+        MathExtra::times3(Rj, tmp_m, hessj);
+        compute_jacobian(gradi, hessi, gradj, hessj, X0[3], jacobian);
         break;
       }
     }
