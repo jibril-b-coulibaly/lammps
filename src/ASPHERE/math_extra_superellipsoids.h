@@ -59,6 +59,8 @@ namespace MathExtraSuperellipsoids {
                                          const double* xc2, const double R2[3][3], const double* shape2,
                                         double* cached_axis, double* contact_point);
 
+  inline int determine_contact_point_wall(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki, const int flagi,
+                                        const double* x_wall, const double* n_wall, double* X0, double* nij, double* overlap);
 
   // Jibril's versions of the functions for contact detection
   double shape_and_derivatives_local(const double* xlocal, const double* shape, const double* block, const int flag, double* grad, double hess[3][3]);
@@ -788,5 +790,105 @@ inline bool MathExtraSuperellipsoids::check_collision_and_get_seed(
     return true; // Collision confirmed
 }
 
+inline int MathExtraSuperellipsoids::determine_contact_point_wall(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki, const int flagi,
+                                        const double* x_wall, const double* n_wall, double* X0, double* nij, double* overlap){
+    //x_wall is a point on the wall TODO: is this actually stored somewhere?
+    // n_wall is the wall normal pointing from wall to particle in the global frame
+    // We might hav to change the fix wall gran files to achieve contact with the wall.
+    // I implemented the function but we might not use it.
+    // Unlike for particle-particle contacts, here we get directly the overlap value.
+
+    double n_local[3];
+    // Transform wall normal into local frame
+    // If n_wall points from Wall->Particle, we want surface normal -n_wall.
+    double n_search[3] = {-n_wall[0], -n_wall[1], -n_wall[2]};
+    MathExtra::transpose_matvec(Ri, n_search, n_local);
+    
+    double nx = n_local[0], ny = n_local[1], nz = n_local[2];
+    double a = shapei[0], b = shapei[1], c = shapei[2];
+    double X0_local[3];
+
+    // Calculate Deepest Point
+    if (flagi == 0){ 
+        // Ellipsoid
+        double norm = std::sqrt(a*a*nx*nx + b*b*ny*ny + c*c*nz*nz);
+        double inv_norm = (norm > 1e-14) ? 1.0/norm : 0.0;
+
+        X0_local[0] = a*a * nx * inv_norm;
+        X0_local[1] = b*b * ny * inv_norm;
+        X0_local[2] = c*c * nz * inv_norm;
+    }
+    else{ 
+        // General Superellipsoid
+        double nx_abs = std::fabs(nx);
+        double ny_abs = std::fabs(ny);
+        double nz_abs = std::fabs(nz);
+        double n1 = blocki[0];
+        double n2 = blocki[1];
+        
+        double x, y, z;
+
+        if (nx_abs < 1e-14 && ny_abs < 1e-14) {
+            x = 0.0; y = 0.0; 
+            z = c * ((nz > 0) ? 1.0 : -1.0);
+        } 
+        else {
+            double p2 = 1.0 / (n2 - 1.0);
+            double p1 = 1.0 / (n1 - 1.0);
+            
+            if (nx_abs > ny_abs) {
+                double alpha = std::pow((b * ny_abs) / (a * nx_abs), p2);
+                double gamma = std::pow(1.0 + std::pow(alpha, n2), n1/n2 - 1.0);
+                double beta = std::pow((c * nz_abs) / (a * nx_abs) * gamma, p1);
+                
+                double den = std::pow(std::pow(1.0 + std::pow(alpha, n2), n1/n2) + std::pow(beta, n1), 1.0/n1);
+                x = 1.0 / den;
+                y = alpha * x;
+                z = beta * x;
+            } else {
+                double alpha = std::pow((a * nx_abs) / (b * ny_abs), p2);
+                double gamma = std::pow(1.0 + std::pow(alpha, n2), n1/n2 - 1.0);
+                double beta = std::pow((c * nz_abs) / (b * ny_abs) * gamma, p1);
+                
+                double den = std::pow(std::pow(1.0 + std::pow(alpha, n2), n1/n2) + std::pow(beta, n1), 1.0/n1);
+                y = 1.0 / den;
+                x = alpha * y;
+                z = beta * y;
+            }
+            
+            x *= a; y *= b; z *= c;
+            
+            if (n_local[0] < 0) x = -x;
+            if (n_local[1] < 0) y = -y;
+            if (n_local[2] < 0) z = -z;
+        }
+        X0_local[0] = x; X0_local[1] = y; X0_local[2] = z;
+    }
+
+    // Transform to Global Frame
+    MathExtra::matvec(Ri, X0_local, X0);
+    for(int k=0; k<3; k++) X0[k] += xci[k]; // Translate to Global Position
+
+    // Set Contact Normal (Always wall normal for plane contacts)
+    nij[0] = n_wall[0];
+    nij[1] = n_wall[1];
+    nij[2] = n_wall[2];
+
+    // Check Overlap
+    double dx = X0[0] - x_wall[0];
+    double dy = X0[1] - x_wall[1];
+    double dz = X0[2] - x_wall[2];
+
+    // Project onto Wall Normal, if dist < 0, the point is "behind" the wall face.
+    double dist = dx*n_wall[0] + dy*n_wall[1] + dz*n_wall[2];
+
+    if (dist < 0.0) {
+        *overlap = -dist; // Store positive overlap value
+        return 0; // contact
+    }
+
+    *overlap = 0.0;
+    return 1; // no contact
+}
 
 #endif
