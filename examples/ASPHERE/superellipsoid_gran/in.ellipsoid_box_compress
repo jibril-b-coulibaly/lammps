@@ -36,6 +36,9 @@ compute block all property/atom block1 block2
 variable phi atom "2/c_block[1]"
 variable theta atom "2/c_block[2]"
 dump 1 all custom 100 compress.lammpstrj id x y z vx vy vz fx fy fz c_shape[*] c_orient[*] v_phi v_theta
+# Ovito maps c_orient[*] on its XYZW axes, which is not correct. Map components explicitly
+dump_modify 1 colname c_orient[1] quatw colname c_orient[2] quati colname c_orient[3] quatj colname c_orient[4] quatk
+
 
 fix             1 all nve/asphere
 
