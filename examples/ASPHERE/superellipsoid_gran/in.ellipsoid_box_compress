@@ -1,0 +1,52 @@
+# Test demo for LAPACK functions in ASPHERE packagecmake -C ../cmake/presets/most.cmake     [OPTIONS] ../cmake
+
+units           lj
+atom_style      ellipsoid
+dimension       3
+boundary        p p p       
+comm_modify     vel yes
+newton          off         
+
+# Create a sparse box first to avoid initial overlaps
+region          box block 0 15 0 15 0 15
+create_box      1 box
+
+# Create particles on a lattice (10x10x10 = 1000 particles)
+lattice         sc 1.2      # Spacing > 1.0 to ensure no initial overlap
+create_atoms    1 box
+
+set             group all mass 1.0
+set             group all shape 0.5 0.4 0.4 
+set             group all block 4.0 4.0
+
+# Rotation: Randomize orientation so we get Face-Face, Edge-Edge, and Corner-Corner
+set             group all quat/random 12345
+
+pair_style      gran/hooke/history/ellipsoid 1000.0 0.0 1.0 0.0 0.5 0
+pair_coeff      * *
+
+# Neighbor list, need to check
+neighbor        0.2 bin
+neigh_modify    delay 0 every 1 check yes
+
+# 5. Computes for Visualization
+compute shape all property/atom shapex shapey shapez
+compute orient all property/atom quatw quati quatj quatk
+compute block all property/atom block1 block2
+variable phi atom "2/c_block[1]"
+variable theta atom "2/c_block[2]"
+dump 1 all custom 100 compress.lammpstrj id x y z vx vy vz fx fy fz c_shape[*] c_orient[*] v_phi v_theta
+
+fix             1 all nve/asphere
+
+timestep        0.001
+thermo_style    custom step atoms ke vol cpu
+thermo          100
+
+# Settling particles
+run             1000
+
+# run compression
+# Compress the periodic box by 1% every unit of time, forces the particles to jam together
+fix             2 all deform 1 x erate -0.01 y erate -0.01 z erate -0.01 remap v
+run             5000
