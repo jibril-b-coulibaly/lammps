@@ -30,8 +30,8 @@ compute block all property/atom block1 block2
 # Ovito uses the reciprocal exponents for the blockiness
 # https://docs.ovito.org/advanced_topics/aspherical_particles.html#howto-aspherical-particles-superquadrics
 # Define atom variables from block
-variable phi atom "2/c_block[1]"
-variable theta atom "2/c_block[2]"
+variable phi atom "2/c_block[2]"
+variable theta atom "2/c_block[1]"
 
 dump mydump all custom 1 dump.lammpstrj id x y z fx fy fz tqx tqy tqz c_diameter[*] c_orient[*] v_phi v_theta
 # Ovito maps c_orient[*] on its XYZW axes, which is not correct. Map components explicitly
