@@ -26,6 +26,7 @@ Syntax
                              temperature, heatflow,
                              angmomx, angmomy, angmomz,
                              shapex, shapey, shapez,
+                             block1, block2,
                              quatw, quati, quatj, quatk, tqx, tqy, tqz,
                              end1x, end1y, end1z, end2x, end2y, end2z,
                              corner1x, corner1y, corner1z,
@@ -63,6 +64,7 @@ Syntax
            *heatflow* = internal heat flow of spherical particle
            *angmomx,angmomy,angmomz* = angular momentum of aspherical particle
            *shapex,shapey,shapez* = 3 diameters of aspherical particle
+           *block1,block2* = 2 blockiness exponents of aspherical particle
            *quatw,quati,quatj,quatk* = quaternion components for aspherical or body particles
            *tqx,tqy,tqz* = torque on finite-size particles
            *end12x, end12y, end12z* = end points of line segment
@@ -158,6 +160,11 @@ If :doc:`newton bond off <newton>` is set, it will be tallied with both atom
 
 The quantities *shapex*, *shapey*, and *shapez* are defined for ellipsoidal
 particles and define the 3d shape of each particle.
+
+The quantities *block1*, and *block2*, are defined for ellipsoidal
+particles and define the blockiness of each super-ellipsoid particle.
+See the :doc:`set <set>` command for an explanation of the blockiness.
+
 
 The quantities *quatw*, *quati*, *quatj*, and *quatk* are defined for
 ellipsoidal particles and body particles and store the 4-vector quaternion
