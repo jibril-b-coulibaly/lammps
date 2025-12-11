@@ -12,6 +12,7 @@
 ------------------------------------------------------------------------- */
 
 #include "../../src/ASPHERE/math_extra_superellipsoids.h"
+#include "../../src/math_extra.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <cmath>
@@ -53,10 +54,7 @@ TEST(ContactPointAndNormal, sphere)
                              rj * xci[2] / (ri+rj) + ri * xcj[2] / (ri+rj),
                              rj / ri};
   double nij_analytical[3] = {xcj[0] - xci[0], xcj[1] - xci[1], xcj[2] - xci[2]};
-  double norm = std::sqrt(nij_analytical[0]*nij_analytical[0] + nij_analytical[1]*nij_analytical[1] + nij_analytical[2]*nij_analytical[2]);
-  nij_analytical[0] /= norm;
-  nij_analytical[1] /= norm;
-  nij_analytical[2] /= norm;
+  MathExtra::norm3(nij_analytical);
 
   ASSERT_NEAR(X0[0], X0_analytical[0], EPSILON);
   ASSERT_NEAR(X0[1], X0_analytical[1], EPSILON);
@@ -66,4 +64,39 @@ TEST(ContactPointAndNormal, sphere)
   ASSERT_NEAR(nij[0], nij_analytical[0], EPSILON);
   ASSERT_NEAR(nij[1], nij_analytical[1], EPSILON);
   ASSERT_NEAR(nij[2], nij_analytical[2], EPSILON);
+
+  // Rotational invariance
+  double anglei = 0.456;
+  double axisi[3] = {1,2,3};
+  MathExtra::norm3(axisi);
+  double quati[4] = {std::cos(anglei),
+                     std::sin(anglei)*axisi[0],
+                     std::sin(anglei)*axisi[1],
+                     std::sin(anglei)*axisi[2]};
+  MathExtra::quat_to_mat(quati, Ri);
+
+  double anglej = 0.123;
+  double axisj[3] = {-1,2,1};
+  MathExtra::norm3(axisj);
+  double quatj[4] = {std::cos(anglej),
+                     std::sin(anglej)*axisj[0],
+                     std::sin(anglej)*axisj[1],
+                     std::sin(anglej)*axisj[2]};
+  MathExtra::quat_to_mat(quatj, Rj);
+
+  X0[0] = X0[1] = X0[2] = X0[3] = 0.0;
+  MathExtraSuperellipsoids::determine_contact_point(xci, Ri, shapei, blocki, flagi,
+                                                    xcj, Rj, shapej, blockj, flagj,
+                                                    X0, nij);
+
+  ASSERT_NEAR(X0[0], X0_analytical[0], EPSILON);
+  ASSERT_NEAR(X0[1], X0_analytical[1], EPSILON);
+  ASSERT_NEAR(X0[2], X0_analytical[2], EPSILON);
+  ASSERT_NEAR(X0[3], X0_analytical[3], EPSILON);
+
+  ASSERT_NEAR(nij[0], nij_analytical[0], EPSILON);
+  ASSERT_NEAR(nij[1], nij_analytical[1], EPSILON);
+  ASSERT_NEAR(nij[2], nij_analytical[2], EPSILON);
+
+ 
 }
