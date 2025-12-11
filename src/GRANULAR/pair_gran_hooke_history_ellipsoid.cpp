@@ -276,7 +276,7 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         MathExtra::scaleadd3(reqj / (reqi + reqj), x[i], reqi / (reqi + reqj), x[j], X0);
         //   MathExtra::scaleadd3(radj / radsum, x[i], radi /radsum, x[j], X0);
         for (int iter_ig = 1 ; iter_ig <= NUMSTEP_INITIAL_GUESS ; iter_ig++) {
-          X0[3] = 1.0; // Lagrange multiplier mu^2 initially one (makes the Newton more stable in continued contact)
+          X0[3] = reqj / reqi; // Lagrange multiplier mu^2
           double frac = iter_ig / double(NUMSTEP_INITIAL_GUESS);
           shapei[0] = shapei[1] = shapei[2] = reqi;
           shapej[0] = shapej[1] = shapej[2] = reqj;

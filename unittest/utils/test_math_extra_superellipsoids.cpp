@@ -16,6 +16,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <cmath>
+#include <vector>
 
 // TODO: consider making a fixture with several setup functions?
 
@@ -100,3 +101,47 @@ TEST(ContactPointAndNormal, sphere)
 
  
 }
+
+TEST(ContactPointAndNormal, supersphere_mono)
+{
+  double r = 3.456;
+  double xci[3] = {-2*r, 0.0, 0.0};
+  double xcj[3] = {2*r, 0.0, 0.0};
+  double shape[3] = {r, r, r};
+  double R[3][3] = {{1.0, 0.0, 0.0},
+                    {0.0, 1.0, 0.0},
+                    {0.0, 0.0, 1.0}};
+
+  std::vector<double> blocks = {2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0};
+  for (auto n : blocks) {
+    double block[2] = {n, n};
+    int flag = MathExtraSuperellipsoids::determine_flag(block);
+
+    // Contact detection
+    // Some starting point away from (0,0,0). Possibly bad initial guess so test is demanding
+    double X0[4] = {r, -r, 2*r, 0.0}, nij[3];
+    int status = MathExtraSuperellipsoids::determine_contact_point(xci, R, shape, block, flag,
+                                                                   xcj, R, shape, block, flag,
+                                                                   X0, nij);
+    // Analytical solution
+    double X0_analytical[4] = {0.0, 0.0, 0.0, 1.0};
+    double nij_analytical[3] = {1.0, 0.0, 0.0};
+    // TODO / WIP:
+    // Gradients can be smaller in different directions, hard to naviguate canyon on high blockiness
+    // Little progress made along the flat faces. Maybe use Levenberg-Marquardt or Newton with momentum (previous step memory) or other methods.
+    // I think this might be an intrinsic problem with the solution having a Hessian of zero, leading to slow convergence + bad conditioning in Newton's method.
+
+    std::cout<<n<<" "<<status<<" "<<X0[0]<<" "<<X0[1]<<" "<<X0[2]<<" "<<X0[3]<<std::endl;
+    ASSERT_NEAR(X0[0], X0_analytical[0], EPSILON);
+    ASSERT_NEAR(X0[1], X0_analytical[1], EPSILON);
+    ASSERT_NEAR(X0[2], X0_analytical[2], EPSILON);
+    ASSERT_NEAR(X0[3], X0_analytical[3], EPSILON);
+
+    ASSERT_NEAR(nij[0], nij_analytical[0], EPSILON);
+    ASSERT_NEAR(nij[1], nij_analytical[1], EPSILON);
+    ASSERT_NEAR(nij[2], nij_analytical[2], EPSILON);
+  }
+}
+
+
+// for polydisperse solution should be at the radii ratio

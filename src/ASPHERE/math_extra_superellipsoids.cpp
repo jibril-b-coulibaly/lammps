@@ -35,7 +35,7 @@ extern "C" { // General Matrices
 namespace MathExtraSuperellipsoids {
 
 static constexpr int ITERMAX_NEWTON = 100;
-static constexpr double CONVERGENCE_NEWTON = 1e-6;
+static constexpr double CONVERGENCE_NEWTON = 1e-10 * 1e-10;
 static constexpr int ITERMAX_LINESEARCH = 10;
 static constexpr double PARAMETER_LINESEARCH = 1e-4;
 static constexpr double CUTBACK_LINESEARCH = 0.5;
@@ -452,7 +452,15 @@ double compute_residual(const double shapefunci, const double* gradi_global, con
   // Equation (23)
   MathExtra::scaleadd3(mu2, gradj_global, gradi_global, residual);
   residual[3] = shapefunci - shapefuncj;
-  return residual[0]*residual[0] + residual[1]*residual[1] + residual[2]*residual[2] + residual[3]*residual[3];
+  // Normalize residual Equation (23)
+  // shape functions and gradients dimensions are not homogeneous
+  // Gradient equality F1' + mu2 * F2' evaluated relative to magnitude of gradient ||F1'|| = ||mu2 * F2'||
+  // Shape function equality F1 - F2 evaluated relative to magnitude of shape function + 1
+  //    the shift f = polynomial - 1 is not necessary and cancels out in F1 - F2
+  // TODO: based on line above, consider removing the -1 in definition of shape function, and compare inside outside to 1 instead of 0.
+  // Last component homogeneous to shape function
+  return MathExtra::lensq3(residual) / MathExtra::lensq3(gradi_global) +
+         residual[3] * residual[3] / ((shapefunci + 1) * (shapefunci + 1));
 }
 
 void compute_jacobian(const double* gradi_global, const double hessi_global[3][3], const double* gradj_global, const double hessj_global[3][3], const double mu2, double* jacobian) {
