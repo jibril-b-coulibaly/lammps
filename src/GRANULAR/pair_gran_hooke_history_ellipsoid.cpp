@@ -258,9 +258,9 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
         int status = MathExtraSuperellipsoids::determine_contact_point(x[i], Ri, shapei, blocki, flagi, x[j], Rj, shapej, blockj, flagj, X0, nij);
         if (status == 0)
           touching = true;
-        else if(status == 5)
+        else if(status == 1)
           touching = false;
-        else
+        else // TODO: Consider making an else if and print warning if LAPACK ok, but NR not converged vs fail the run ?
           error->all(FLERR, "Ellipsoid contact detection failed with status {} ", status);
       } else {
         if (touching){
@@ -293,11 +293,11 @@ void PairGranHookeHistoryEllipsoid::compute(int eflag, int vflag)
           int status = MathExtraSuperellipsoids::determine_contact_point(x[i], Ri, shapei, blocki, flagi, x[j], Rj, shapej, blockj, flagj, X0, nij);
           if (status == 0)
             touching = true;
-          else if(status == 5)
+          else if(status == 1)
             touching = false;
-          else
+          else // TODO: Consider making an else if and print warning if LAPACK ok, but NR not converged vs fail the run ?
             error->all(FLERR, "Ellipsoid contact detection failed with status {} ", status);
-          }
+        }
         }
       }
 

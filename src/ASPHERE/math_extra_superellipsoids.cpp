@@ -34,12 +34,15 @@ extern "C" { // General Matrices
 
 namespace MathExtraSuperellipsoids {
 
-static constexpr int ITERMAX_NEWTON = 100;
-static constexpr double CONVERGENCE_NEWTON = 1e-10 * 1e-10;
-static constexpr int ITERMAX_LINESEARCH = 10;
-static constexpr double PARAMETER_LINESEARCH = 1e-4;
-static constexpr double CUTBACK_LINESEARCH = 0.5;
-static constexpr double CONVERGENCE_OVERLAP = 1e-8;
+static constexpr int ITERMAX_NR = 100;
+static constexpr double TOL_NR_RES = 1e-10 * 1e-10;
+static constexpr double TOL_NR_POS = 1e-6 * 1e-6;
+
+static constexpr int ITERMAX_LS = 10;
+static constexpr double PARAMETER_LS = 1e-4;
+static constexpr double CUTBACK_LS = 0.5;
+
+static constexpr double TOL_OVERLAP = 1e-8;
 static constexpr unsigned int ITERMAX_OVERLAP = 20;
 static constexpr double MINSLOPE_OVERLAP = 1e-12;
 
@@ -476,14 +479,6 @@ void compute_jacobian(const double* gradi_global, const double hessi_global[3][3
     jacobian[3 + col*4] = gradi_global[col] - gradj_global[col];
   }
   jacobian[15] = 0.0;
-
-  // Tikhonov regularization
-  // High blockiness grains can have zero curvature / singular Hessian
-  // along principal local axes (x=0, y=0, z=0)
-  double diag_weight = TIKHONOV_SCALE * (jacobian[0] + jacobian[5] + jacobian[10]);
-  jacobian[0]  += diag_weight;
-  jacobian[5]  += diag_weight;
-  jacobian[10] += diag_weight;
 }
 
 double compute_residual_and_jacobian(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki, const int flagi,
@@ -500,14 +495,26 @@ double compute_residual_and_jacobian(const double* xci, const double Ri[3][3], c
 int determine_contact_point(const double* xci, const double Ri[3][3], const double* shapei, const double* blocki, const int flagi,
                             const double* xcj, const double Rj[3][3], const double* shapej, const double* blockj, const int flagj,
                             double* X0, double* nij) {
-  double norm, norm_ini, shapefunc[2], residual[4], jacobian[16];
+  double norm, norm_old, shapefunc[2], residual[4], jacobian[16];
+  double lsq = MathExtra::distsq3(xci, xcj);
   bool converged(false);
+
+  // Accelerate convergence rate for high blockiness / flat faces
+  // with high root multiplicity N
+  // e.g.: f(x) = x^N , Newton's iterate: x_k+1 = x_k - x_k / N
+  // Estimate N from |x_k+1 - x_k| / |x_k - x_k-1| = 1 - 1/N
+  // within bounds 1 < N < max(block)-1
+  // then multiply Newton's step size by N to recover quadratic convergence
+  double multiplicity(1.0);
+  double rhs_old[3];
+  double blockmax = std::fmax(std::fmax(blocki[0],blocki[1]), std::fmax(blockj[0], blockj[1]));
 
   norm = compute_residual_and_jacobian(xci, Ri, shapei, blocki, flagi, xcj, Rj, shapej, blockj, flagj, X0, shapefunc, residual, jacobian);
   // TODO: would it be wise or crazy to test for convergence before even attempting Newton's method?
   //       the initial guess is the old X0, so with temporal coherence, it might still pass deformation is slow!
-  for (int iter = 0 ; iter < ITERMAX_NEWTON ; iter++) {
-    norm_ini = norm;
+
+  for (int iter = 0 ; iter < ITERMAX_NR ; iter++) {
+    norm_old = norm;
 
     // Solve Newton step
     int lapack_error, ipiv[16];
@@ -516,16 +523,29 @@ int determine_contact_point(const double* xci, const double Ri[3][3], const doub
     const int nrhs = 1;
     double rhs[4] = {-residual[0], -residual[1], -residual[2], -residual[3]};
     dgetrf_(&n, &n, jacobian, &n, ipiv, &lapack_error);
-    if (lapack_error)
+    if (lapack_error < 0)
       return lapack_error;
+    else if (lapack_error > 0) { // Singular matrix: Tikhonov regularization
+      // High blockiness grains can have zero curvature / singular Hessian
+      // along principal local axes (x=0, y=0, z=0)
+      double diag_weight = TIKHONOV_SCALE * (jacobian[0] + jacobian[5] + jacobian[10]);
+      jacobian[0]  += diag_weight;
+      jacobian[5]  += diag_weight;
+      jacobian[10] += diag_weight;
+    }
     dgetrs_(&trans, &n, &nrhs, jacobian, &n, ipiv, rhs, &n, &lapack_error);
     if (lapack_error)
       return lapack_error;
 
+    if (iter > 0)
+      multiplicity = std::fmin(std::fmax(1.0, 1.0 / (1.0 - std::sqrt(MathExtra::lensq3(rhs)/MathExtra::lensq3(rhs_old)))), blockmax - 1.0);
+    MathExtra::copy3(rhs, rhs_old);
+
     // Backtracking line search
-    double a(1.0), X_line[4];
+    double a(multiplicity), X_line[4];
     int iter_ls;
-    for (iter_ls = 0 ; iter_ls < ITERMAX_LINESEARCH ; iter_ls++) {
+
+    for (iter_ls = 0 ; iter_ls < ITERMAX_LS ; iter_ls++) {
       X_line[0] = X0[0] + a * rhs[0];
       X_line[1] = X0[1] + a * rhs[1];
       X_line[2] = X0[2] + a * rhs[2];
@@ -573,7 +593,8 @@ int determine_contact_point(const double* xci, const double Ri[3][3], const doub
 
       norm = compute_residual(shapefunc[0], gradi, shapefunc[1], gradj, X_line[3], residual);
 
-      if (norm <= CONVERGENCE_NEWTON) {
+      if ((norm <= TOL_NR_RES) &&
+          (MathExtra::lensq3(rhs) * a * a <= TOL_NR_POS * lsq)) {
         converged = true;
         // TODO: consider testing picking the normal with the least error
         //       i.e., likely the grain with the smallest curvature (Hessian norm)
@@ -581,10 +602,10 @@ int determine_contact_point(const double* xci, const double Ri[3][3], const doub
         //       right now we use the gradient on grain i for simplicity and performance. When testing, we could see if using  is just as good
         MathExtra::normalize3(gradi, nij);
         break;
-      } else if (norm > norm_ini - PARAMETER_LINESEARCH * a * norm_ini) { // Armijo - Goldstein condition not met
-        // Tested after convergence check because tiny values of norm and norm_ini < CONVERGENCE_NEWTON
+      } else if (norm > norm_old - PARAMETER_LS * a * norm_old) { // Armijo - Goldstein condition not met
+        // Tested after convergence check because tiny values of norm and norm_old < TOL_NR
         // Can still fail the Armijo - Goldstein condition`
-        a *= CUTBACK_LINESEARCH;
+        a *= CUTBACK_LS;
       } else {
         // Only compute the jacobian if there is another Newton iteration to come
         double tmp_m[3][3];
@@ -598,7 +619,7 @@ int determine_contact_point(const double* xci, const double Ri[3][3], const doub
     }
     // Take full step if no descent at the end of line search
     // Try to escape bad region
-    if (iter_ls == ITERMAX_LINESEARCH) {
+    if (iter_ls == ITERMAX_LS) {
       X0[0] += rhs[0];
       X0[1] += rhs[1];
       X0[2] += rhs[2];
@@ -615,12 +636,14 @@ int determine_contact_point(const double* xci, const double Ri[3][3], const doub
       break;
   }
 
-  // LAPACK error are within [-4, 4], use 5 non-touching, -5 non-converging
+  // LAPACK dgetrs() error values are negative, return values:
+  // 2 = failed convergence
+  // 1 = converged but grains not touching
+  // 0 = converged and grains touching
   if (!converged)
-    return -5;
+    return 2;
   if (shapefunc[0] > 0.0 || shapefunc[1] > 0.0)
-    return 5;
-
+    return 1;
   return 0;
 }
 
@@ -799,7 +822,7 @@ double compute_overlap_distance(
       }
 
       // Convergence Check
-      if (std::fabs(val) < CONVERGENCE_OVERLAP) break;
+      if (std::fabs(val) < TOL_OVERLAP) break;
 
       // Newton Step
       double slope = local_grad[0] * local_normal[0] +

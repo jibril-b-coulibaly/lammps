@@ -22,7 +22,7 @@
 #include "math_extra.h"
 
 namespace MathExtraSuperellipsoids {
-  inline constexpr double TIKHONOV_SCALE = 1e-8; // TODO: I don't think we should declare those in the header or they will appear whenever the header is included. that means we should move the definition of the manual solver into the .cpp file
+  inline constexpr double TIKHONOV_SCALE = 1e-14; // TODO: I don't think we should declare those in the header or they will appear whenever the header is included. that means we should move the definition of the manual solver into the .cpp file
   double beta_func(double a, double b);
   void volume_superellipsoid(const double *blockiness, const double *shape, double volume); // duplicated from math_extra might remove
   void inertia_superellipsoid(const double *shape, const double *blockiness, double density, double *inertia); // duplicated from math_extra might remove
