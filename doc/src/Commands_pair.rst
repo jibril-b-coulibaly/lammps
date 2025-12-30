@@ -110,8 +110,10 @@ OPT.
    * :doc:`gauss/cut (o) <pair_gauss>`
    * :doc:`gayberne (gio) <pair_gayberne>`
    * :doc:`gran/hertz/history (o) <pair_gran>`
+   * :doc:`gran/hertz/history/ellipsoid <pair_gran_ellipsoid>`
    * :doc:`gran/hooke (o) <pair_gran>`
    * :doc:`gran/hooke/history (ko) <pair_gran>`
+   * :doc:`gran/hooke/history/ellipsoid <pair_gran_ellipsoid>`
    * :doc:`granular <pair_granular>`
    * :doc:`gw <pair_gw>`
    * :doc:`gw/zbl <pair_gw>`

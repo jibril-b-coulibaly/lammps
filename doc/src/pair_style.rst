@@ -203,8 +203,10 @@ accelerated styles exist.
 * :doc:`gayberne <pair_gayberne>` - Gay-Berne ellipsoidal potential
 * :doc:`granular <pair_granular>` - Generalized granular potential
 * :doc:`gran/hertz/history <pair_gran>` - granular potential with Hertzian interactions
-* :doc:`gran/hooke <pair_gran>` - granular potential with history effects
-* :doc:`gran/hooke/history <pair_gran>` - granular potential without history effects
+* :doc:`gran/hertz/history/ellipsoid <pair_gran_ellipsoid>` - granular potential with Hertzian interactions for superellipsoids
+* :doc:`gran/hooke <pair_gran>` - granular potential without history effects
+* :doc:`gran/hooke/history <pair_gran>` - granular potential with history effects
+* :doc:`gran/hooke/history/ellipsoid <pair_gran_ellipsoid>` - granular potential for superellipsoids with history effects
 * :doc:`gw <pair_gw>` - Gao-Weber potential
 * :doc:`gw/zbl <pair_gw>` - Gao-Weber potential with a repulsive ZBL core
 * :doc:`harmonic/cut <pair_harmonic_cut>` - repulsive-only harmonic potential

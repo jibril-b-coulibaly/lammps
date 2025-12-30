@@ -50,13 +50,14 @@ individual particles, after then are created.
 
 The ellipsoid style defines particles that are ellipsoids and thus can
 be aspherical.  Each particle has a shape, specified by 3 diameters,
-and mass (or density).  These particles store an angular momentum and
-their orientation (quaternion), and can be acted upon by torque.  They
-do not store an angular velocity (omega), which can be in a different
-direction than angular momentum, rather they compute it as needed.
-The "set" command can be used to modify the diameter, orientation, and
-mass of individual particles, after then are created.  It also has a
-brief explanation of what quaternions are.
+and mass (or density).  Superellipsoid particles can be defined by
+specifying 2 blockiness exponents (block).  These particles store an angular
+momentum and their orientation (quaternion), and can be acted upon by
+torque.  They do not store an angular velocity (omega), which can be
+in a different direction than angular momentum, rather they compute it
+as needed.  The "set" command can be used to modify the diameter,
+blockiness, orientation, and mass of individual particles, after they
+are created.  It also has a brief explanation of what quaternions are.
 
 The line style defines line segment particles with two end points and
 a mass (or density).  They can be used in 2d simulations, and they can
@@ -113,9 +114,12 @@ When a system with finite-size particles is defined, the particles
 will only rotate and experience torque if the force field computes
 such interactions.  These are the various :doc:`pair styles <pair_style>` that generate torque:
 
-* :doc:`pair_style gran/history <pair_gran>`
-* :doc:`pair_style gran/hertz <pair_gran>`
-* :doc:`pair_style gran/no_history <pair_gran>`
+* :doc:`pair_style granular <pair_granular>`
+* :doc:`pair_style gran/hooke <pair_gran>`
+* :doc:`pair_style gran/hooke/history <pair_gran>`
+* :doc:`pair_style gran/hertz/history <pair_gran>`
+* :doc:`pair_style gran/hooke/history/ellipsoid <pair_gran_ellipsoid>`
+* :doc:`pair_style gran/hertz/history/ellipsoid <pair_gran_ellipsoid>`
 * :doc:`pair_style dipole/cut <pair_dipole>`
 * :doc:`pair_style gayberne <pair_gayberne>`
 * :doc:`pair_style resquared <pair_resquared>`
@@ -126,6 +130,8 @@ such interactions.  These are the various :doc:`pair styles <pair_style>` that g
 * :doc:`pair_style body/nparticle <pair_body_nparticle>`
 
 The granular pair styles are used with spherical particles.  The
+*gran/ellipsoid* granular pair styles are used with
+ellipsoidal and superellipsoid particles.  The
 dipole pair style is used with the dipole atom style, which could be
 applied to spherical or ellipsoidal particles.  The GayBerne and
 REsquared potentials require ellipsoidal particles, though they will
