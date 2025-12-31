@@ -58,5 +58,5 @@ target_include_directories(test_math_eigen_impl PRIVATE ${LAMMPS_SOURCE_DIR})
 add_test(NAME MathEigen COMMAND test_math_eigen_impl 10 5)
 
 add_executable(test_math_extra_superellipsoids test_math_extra_superellipsoids.cpp)
-target_link_libraries(test_math_extra_superellipsoids PRIVATE lammps GTest::GMockMain)
+target_link_libraries(test_math_extra_superellipsoids PRIVATE lammps GTest::GMockMain ${LAPACK_LIBRARIES})
 add_test(NAME MathExtraSuperellipsoids COMMAND test_math_extra_superellipsoids)
