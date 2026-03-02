@@ -1807,7 +1807,7 @@ void Atom::data_bonus(int n, char *buf, AtomVec *avec_bonus, tagint id_offset)
     auto values = Tokenizer(utils::trim_comment(buf)).as_vector();
     if (values.size() == 0) {
       // skip over empty or comment lines
-    } else if ((int)values.size() != avec_bonus->size_data_bonus) {
+    } else if ((int)values.size() != avec_bonus->size_data_bonus_min && (int)values.size() != avec_bonus->size_data_bonus) {
       error->all(FLERR, "Incorrect format in Bonus section of data file: {}{}",
                  utils::trim(buf), utils::errorurl(2));
     } else {
