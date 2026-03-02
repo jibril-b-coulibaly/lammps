@@ -42,7 +42,7 @@ AtomVecTri::AtomVecTri(LAMMPS *lmp) : AtomVec(lmp)
   size_border_bonus = 17;
   size_restart_bonus_one = 17;
   size_data_bonus = 10;
-  size_data_bonus_min = 10;
+  size_data_bonus_legacy = 10;
 
   atom->tri_flag = 1;
   atom->molecule_flag = atom->rmass_flag = 1;

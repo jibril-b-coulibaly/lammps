@@ -46,7 +46,7 @@ class AtomVec : protected Pointers {
   int size_border_bonus;         // # in border bonus comm
   int size_restart_bonus_one;    // # in restart bonus comm
   int size_data_bonus;           // number of values in Bonus line
-  int size_data_bonus_min;       // min number of values in Bonus line for legacy data files
+  int size_data_bonus_legacy;       // min number of values in Bonus line for legacy data files
 
   class Molecule **onemols;    // list of molecules for style template
   int nset;                    // # of molecules in list

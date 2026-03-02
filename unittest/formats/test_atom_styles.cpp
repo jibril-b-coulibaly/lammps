@@ -1499,6 +1499,64 @@ TEST_F(AtomStyleTest, ellipsoid)
     EXPECT_NEAR(bonus[3].quat[1], 0.25056280708573159, EPSILON);
     EXPECT_NEAR(bonus[3].quat[2], 0.0, EPSILON);
     EXPECT_NEAR(bonus[3].quat[3], 0.25056280708573159, EPSILON);
+
+    // test for backward compatibility without block parameters
+    std::vector<std::string> file_contents;
+    char line[1024];
+    bool in_ellipsoids = false;
+    FILE *fin = fopen("test_atom_styles.data", "r");
+    ASSERT_NE(fin, nullptr);
+
+    while (fgets(line, sizeof(line), fin)) {
+        if (strstr(line, "Ellipsoids") == line) {
+            in_ellipsoids = true;
+            file_contents.push_back(line);
+            continue;
+        }
+
+        if (in_ellipsoids) {
+            int id;
+            double s1, s2, s3, q1, q2, q3, q4, b1, b2;
+            int nread = sscanf(line, "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf", 
+                               &id, &s1, &s2, &s3, &q1, &q2, &q3, &q4, &b1, &b2);
+            
+            if (nread >= 8) {
+                char legacy_line[256];
+                snprintf(legacy_line, sizeof(legacy_line), "%d %g %g %g %g %g %g %g\n", 
+                         id, s1, s2, s3, q1, q2, q3, q4);
+                file_contents.push_back(legacy_line); 
+                continue;
+            } else if (strlen(line) <= 2 && line[0] == '\n') {
+                in_ellipsoids = false;
+            }
+        }
+        file_contents.push_back(line);
+    }
+    fclose(fin);
+    FILE *fout = fopen("test_atom_styles.data", "w");
+    ASSERT_NE(fout, nullptr);
+    for (const auto& l : file_contents) {
+        fputs(l.c_str(), fout);
+    }
+    fclose(fout);
+
+    BEGIN_HIDE_OUTPUT();
+    command("clear");
+    command("atom_style ellipsoid");
+    command("pair_style zero 4.0");
+    command("units real");
+    command("atom_modify map array");
+    command("read_data test_atom_styles.data");
+    command("pair_coeff * *");
+    END_HIDE_OUTPUT();
+    ASSERT_EQ(lmp->atom->nellipsoids, 4);
+    avec  = dynamic_cast<AtomVecEllipsoid *>(lmp->atom->avec);
+    bonus = avec->bonus;
+    for (int i = 0; i < 4; i++) {
+        EXPECT_NEAR(bonus[i].block[0], 2.0, EPSILON);
+        EXPECT_NEAR(bonus[i].block[1], 2.0, EPSILON);
+        EXPECT_FALSE(bonus[i].type);
+    }
 }
 
 TEST_F(AtomStyleTest, line)

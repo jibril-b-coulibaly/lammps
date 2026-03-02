@@ -45,7 +45,7 @@ AtomVecEllipsoid::AtomVecEllipsoid(LAMMPS *lmp) :
   size_border_bonus = 13;
   size_restart_bonus_one = 13;
   size_data_bonus = 10;
-  size_data_bonus_min = 8;
+  size_data_bonus_legacy = 8;
 
   atom->ellipsoid_flag = 1;
   atom->rmass_flag = atom->angmom_flag = atom->torque_flag = 1;

@@ -40,7 +40,7 @@ AtomVecLine::AtomVecLine(LAMMPS *lmp) : AtomVec(lmp)
   size_border_bonus = 3;
   size_restart_bonus_one = 3;
   size_data_bonus = 5;
-  size_data_bonus_min = 5;
+  size_data_bonus_legacy = 5;
 
   atom->line_flag = 1;
   atom->molecule_flag = atom->rmass_flag = 1;
